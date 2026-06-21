@@ -222,7 +222,20 @@ Configurations are loaded from `config.json`. You can modify profiles or specify
    git clone https://github.com/ganeshkumar-2005/encryptx.git
    cd encryptx
    ```
-2. Install the requirements:
+
+2. Set up a virtual environment (Recommended to avoid `externally-managed-environment` errors):
+   - **Linux / macOS**:
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
+   - **Windows**:
+     ```powershell
+     python -m venv venv
+     venv\Scripts\activate
+     ```
+
+3. Install the requirements inside the environment:
    ```bash
    pip install -r requirements.txt
    ```
