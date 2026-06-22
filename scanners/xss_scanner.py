@@ -1,3 +1,4 @@
+import html
 import urllib.parse
 from bs4 import BeautifulSoup
 from utils.helpers import make_web_request
@@ -51,6 +52,20 @@ class XSSScanner:
                 })
         return dom_findings
 
+    def _is_html_encoded(self, payload: str, response_text: str) -> bool:
+        """Checks if the payload appears in the response only in HTML-encoded form.
+        
+        Returns True if an HTML-encoded version of the payload (e.g., &lt;script&gt;)
+        is present but the raw payload is NOT — meaning the server safely encoded it.
+        """
+        # Build the HTML-escaped version of the payload
+        escaped_payload = html.escape(payload, quote=True)
+        # Only relevant if the escaped form differs from the raw payload
+        if escaped_payload == payload:
+            return False
+        # Check if the escaped form appears in the response
+        return escaped_payload in response_text
+
     def scan(self, progress_callback=None) -> dict:
         findings = []
         
@@ -82,9 +97,20 @@ class XSSScanner:
         
         total_steps = len(params) * len(self.payloads)
         if total_steps == 0:
-            # Fallback to test fake parameter
-            params = {"q": ["1"]}
-            total_steps = len(self.payloads)
+            # No URL parameters to test — log INFO and skip gracefully
+            findings.append({
+                "module": "XSS Scanner",
+                "target": self.url,
+                "severity": "INFO",
+                "title": "No URL Parameters Found to Test",
+                "description": "The target URL does not contain any query string parameters. Reflected XSS testing requires injectable parameters.",
+                "evidence": f"URL: {self.url}\nQuery string: (empty)",
+                "remediation": "Provide a URL with query parameters (e.g., ?q=test) for reflected XSS testing."
+            })
+            return {
+                "target": self.url,
+                "findings": findings
+            }
             
         step = 0
         for param, values in params.items():
@@ -104,8 +130,9 @@ class XSSScanner:
                 
                 try:
                     res = make_web_request(test_url, timeout=self.timeout)
-                    # If payload is reflected literally without escaping
+
                     if payload in res.text:
+                        # Payload reflected literally without encoding — VULNERABLE
                         findings.append({
                             "module": "XSS Scanner",
                             "target": test_url,
@@ -116,6 +143,21 @@ class XSSScanner:
                             "remediation": "Apply context-aware output encoding to all dynamic values printed in HTML body, attributes, and scripts. Utilize Content-Security-Policy headers."
                         })
                         break # Skip remaining payloads for this parameter
+
+                    elif self._is_html_encoded(payload, res.text):
+                        # Payload was reflected but HTML-encoded — NOT vulnerable
+                        # Report as INFO so the tester knows the input IS reflected
+                        findings.append({
+                            "module": "XSS Scanner",
+                            "target": test_url,
+                            "severity": "INFO",
+                            "title": "Payload Reflected but Safely Encoded",
+                            "description": f"The parameter '{param}' value is reflected in the response, but the server applies HTML encoding (e.g., &lt;script&gt; instead of <script>), neutralizing the XSS vector.",
+                            "evidence": f"Parameter: {param}\nPayload: {payload}\nReflected as HTML-encoded: True",
+                            "remediation": "No immediate action required. The server correctly encodes reflected input. Continue to verify encoding is applied consistently across all contexts."
+                        })
+                        break # No need to test more payloads — encoding is applied
+
                 except Exception:
                     pass
                     

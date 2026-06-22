@@ -82,7 +82,12 @@ class APIScanner:
                 # Send introspective probe query
                 introspection_query = {"query": "{__schema{types{name}}}"}
                 try:
-                    res_intro = make_web_request(r["url"], method="POST", data=introspection_query, timeout=self.timeout)
+                    res_intro = make_web_request(
+                        r["url"], method="POST",
+                        json_data=introspection_query,
+                        headers={"Content-Type": "application/json"},
+                        timeout=self.timeout
+                    )
                     if "__schema" in res_intro.text:
                         findings.append({
                             "module": "API Security Scanner",

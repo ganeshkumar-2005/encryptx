@@ -43,6 +43,13 @@ class SQLiScanner:
             ("WAITFOR DELAY '0:0:5'", "MSSQL"),
             ("dbms_pipe.receive_message('a',5)", "Oracle")
         ]
+        # Confirmation payloads use a shorter delay (2s) to rule out network jitter
+        self.time_confirm_payloads = {
+            "MySQL": "sleep(2)",
+            "PostgreSQL": "pg_sleep(2)",
+            "MSSQL": "WAITFOR DELAY '0:0:2'",
+            "Oracle": "dbms_pipe.receive_message('a',2)"
+        }
 
     def _fingerprint_db_error(self, body: str) -> str:
         """Determines database type from response body error signatures."""
@@ -73,10 +80,24 @@ class SQLiScanner:
         
         total_steps = len(params) * (len(self.error_payloads) + len(self.time_payloads))
         if total_steps == 0:
-            # Add a fake parameter check if no query parameters exist
-            params = {"id": ["1"]}
-            total_steps = (len(self.error_payloads) + len(self.time_payloads))
+            # No URL parameters to test — log INFO and skip gracefully
+            findings.append({
+                "module": "SQL Injection Scanner",
+                "target": self.url,
+                "severity": "INFO",
+                "title": "No URL Parameters Found to Test",
+                "description": "The target URL does not contain any query string parameters. SQL injection testing requires injectable parameters.",
+                "evidence": f"URL: {self.url}\nQuery string: (empty)",
+                "remediation": "Provide a URL with query parameters (e.g., ?id=1) for SQL injection testing."
+            })
+            return {
+                "target": self.url,
+                "findings": findings
+            }
             
+        # Track which parameters already have confirmed findings to avoid duplicates
+        confirmed_params = set()
+
         step = 0
         for param, values in params.items():
             # 1. Error-based testing
@@ -85,6 +106,10 @@ class SQLiScanner:
                 if progress_callback:
                     progress_callback(step, total_steps)
                     
+                # Skip if this parameter already has a confirmed finding
+                if param in confirmed_params:
+                    continue
+
                 # Craft modified query parameters
                 test_params = params.copy()
                 test_params[param] = [payload]
@@ -101,6 +126,7 @@ class SQLiScanner:
                     db_type = self._fingerprint_db_error(res.text)
                     
                     if db_type:
+                        confirmed_params.add(param)
                         findings.append({
                             "module": "SQL Injection Scanner",
                             "target": test_url,
@@ -114,8 +140,8 @@ class SQLiScanner:
                 except Exception:
                     pass
             
-            # 2. Time-based blind testing (if no error-based SQLi found on parameter)
-            if not any(f["target"].startswith(self.url) for f in findings):
+            # 2. Time-based blind testing (only if no error-based SQLi found for THIS parameter)
+            if param not in confirmed_params:
                 for payload, db in self.time_payloads:
                     step += 1
                     if progress_callback:
@@ -137,16 +163,37 @@ class SQLiScanner:
                         # Check if request was delayed by approximately 5 seconds
                         # Add buffer for network jitter
                         if elapsed >= 4.8 and elapsed > (baseline_time + 3.0):
-                            findings.append({
-                                "module": "SQL Injection Scanner",
-                                "target": test_url,
-                                "severity": "CRITICAL",
-                                "title": "Time-Based Blind SQL Injection Vulnerability",
-                                "description": f"The parameter '{param}' is vulnerable to Time-Based Blind SQL Injection. The server response was delayed significantly ({elapsed:.2f}s) when injecting sleep payloads.",
-                                "evidence": f"Parameter: {param}\nPayload: {payload}\nBaseline Time: {baseline_time:.2f}s\nPayload response time: {elapsed:.2f}s",
-                                "remediation": "Implement robust parameterized queries. Use ORMs or predefined stored procedures to strictly enforce separation of data and code."
-                            })
-                            break
+                            # --- Double confirmation ---
+                            # Send a second payload with a 2-second delay to rule out
+                            # network jitter or slow server responses. If the second
+                            # request takes ~2s (not ~5s), the delay is controllable.
+                            confirm_payload = self.time_confirm_payloads.get(db, payload)
+                            confirm_params = params.copy()
+                            confirm_params[param] = [confirm_payload]
+                            confirm_query = urllib.parse.urlencode(confirm_params, doseq=True)
+                            confirm_url = urllib.parse.urlunparse((
+                                parsed_url.scheme, parsed_url.netloc, parsed_url.path,
+                                parsed_url.params, confirm_query, parsed_url.fragment
+                            ))
+
+                            confirm_start = time.time()
+                            make_web_request(confirm_url, timeout=self.timeout + 4.0)
+                            confirm_elapsed = time.time() - confirm_start
+
+                            # Confirmation: 2s delay should produce ~1.8-3.5s response,
+                            # distinctly shorter than the initial 5s delay
+                            if confirm_elapsed >= 1.8 and confirm_elapsed < (elapsed - 1.0):
+                                confirmed_params.add(param)
+                                findings.append({
+                                    "module": "SQL Injection Scanner",
+                                    "target": test_url,
+                                    "severity": "CRITICAL",
+                                    "title": "Time-Based Blind SQL Injection Vulnerability",
+                                    "description": f"The parameter '{param}' is vulnerable to Time-Based Blind SQL Injection. The server response was delayed significantly ({elapsed:.2f}s) when injecting sleep payloads. Confirmed with a second {db} delay of {confirm_elapsed:.2f}s.",
+                                    "evidence": f"Parameter: {param}\nPayload: {payload}\nBaseline Time: {baseline_time:.2f}s\nPayload response time: {elapsed:.2f}s\nConfirmation (2s delay): {confirm_elapsed:.2f}s",
+                                    "remediation": "Implement robust parameterized queries. Use ORMs or predefined stored procedures to strictly enforce separation of data and code."
+                                })
+                                break
                     except Exception:
                         pass
                         

@@ -1,0 +1,242 @@
+{
+  "target": "scanme.nmap.org",
+  "timestamp": "2026-06-22 19:46:57",
+  "findings": [
+    {
+      "module": "Port Scanner",
+      "target": "scanme.nmap.org:22",
+      "severity": "MEDIUM",
+      "title": "Open Port Detected (22/SSH)",
+      "description": "Port 22 running SSH is open on the target host.",
+      "evidence": "Service: SSH\nBanner: SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13",
+      "remediation": "Ensure this port is firewalled and not exposed to the public internet unless required. If running, ensure it uses secure credentials and up-to-date software versions."
+    },
+    {
+      "module": "Port Scanner",
+      "target": "scanme.nmap.org:80",
+      "severity": "INFO",
+      "title": "Open Port Detected (80/HTTP)",
+      "description": "Port 80 running HTTP is open on the target host.",
+      "evidence": "Service: HTTP\nBanner: None captured",
+      "remediation": "Ensure this port is firewalled and not exposed to the public internet unless required. If running, ensure it uses secure credentials and up-to-date software versions."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "MEDIUM",
+      "title": "Missing HTTP Strict Transport Security (HSTS) Header",
+      "description": "HTTP Strict Transport Security (HSTS) instructs the browser to always connect using HTTPS, preventing SSL stripping attacks.",
+      "evidence": "Header 'strict-transport-security' was not found in response.",
+      "remediation": "Add the 'Strict-Transport-Security: max-age=31536000; includeSubDomains' header to your web server configuration."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "HIGH",
+      "title": "Missing Content Security Policy (CSP) Header",
+      "description": "Content Security Policy (CSP) restricts the resources (such as JavaScript, CSS, Images) that the browser is allowed to load for a given page, offering defense-in-depth against XSS.",
+      "evidence": "Header 'content-security-policy' was not found in response.",
+      "remediation": "Implement a robust Content Security Policy header. For example: Content-Security-Policy: default-src 'self';"
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "LOW",
+      "title": "Missing X-Content-Type-Options Header",
+      "description": "The X-Content-Type-Options response HTTP header is a marker used by the server to indicate that the MIME types advertised in the Content-Type headers should not be changed and be followed.",
+      "evidence": "Header 'x-content-type-options' was not found in response.",
+      "remediation": "Configure the web server to send the X-Content-Type-Options: nosniff header."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "MEDIUM",
+      "title": "Missing X-Frame-Options Header",
+      "description": "X-Frame-Options prevents the website from being loaded in an iframe or object, which protects users against clickjacking attacks.",
+      "evidence": "Header 'x-frame-options' was not found in response.",
+      "remediation": "Configure the web server to send X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN header, or use the CSP frame-ancestors directive."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "INFO",
+      "title": "Missing Referrer-Policy Header",
+      "description": "The Referrer-Policy HTTP header controls how much referrer information (sent via the Referer header) should be included with requests.",
+      "evidence": "Header 'referrer-policy' was not found in response.",
+      "remediation": "Add the Referrer-Policy: strict-origin-when-cross-origin header to web responses."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "INFO",
+      "title": "Missing Permissions-Policy Header",
+      "description": "Permissions-Policy allows developers to selectively enable, disable, and modify the behavior of various APIs and browser features (camera, geolocation, etc.).",
+      "evidence": "Header 'permissions-policy' was not found in response.",
+      "remediation": "Add a Permissions-Policy header configured with restricted features (e.g., geolocation=(), camera=())."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "LOW",
+      "title": "Missing Cache-Control Header",
+      "description": "The response does not include a Cache-Control header. Without explicit caching directives, browsers and proxies may cache the response, potentially storing sensitive data on disk or in shared caches.",
+      "evidence": "Cache-Control header was not found in the response.",
+      "remediation": "Add 'Cache-Control: no-store, no-cache, must-revalidate' to responses containing sensitive or user-specific data."
+    },
+    {
+      "module": "Header Scanner",
+      "target": "http://scanme.nmap.org",
+      "severity": "LOW",
+      "title": "Web Server Signature Disclosure",
+      "description": "The server header discloses details about the web server backend software and potentially its version.",
+      "evidence": "Server: Apache/2.4.7 (Ubuntu)",
+      "remediation": "Disable or strip the 'server' header in your web server configuration (e.g., exposeHeaders / ServerTokens off)."
+    }
+  ],
+  "scans": {
+    "ports": {
+      "elapsed_seconds": 10.140737056732178,
+      "open_ports": [
+        {
+          "port": 22,
+          "status": "open",
+          "service": "SSH",
+          "banner": "SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13",
+          "severity": "MEDIUM"
+        },
+        {
+          "port": 80,
+          "status": "open",
+          "service": "HTTP",
+          "banner": "",
+          "severity": "INFO"
+        }
+      ],
+      "closed_ports_count": 48,
+      "findings": [
+        {
+          "module": "Port Scanner",
+          "target": "scanme.nmap.org:22",
+          "severity": "MEDIUM",
+          "title": "Open Port Detected (22/SSH)",
+          "description": "Port 22 running SSH is open on the target host.",
+          "evidence": "Service: SSH\nBanner: SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13",
+          "remediation": "Ensure this port is firewalled and not exposed to the public internet unless required. If running, ensure it uses secure credentials and up-to-date software versions."
+        },
+        {
+          "module": "Port Scanner",
+          "target": "scanme.nmap.org:80",
+          "severity": "INFO",
+          "title": "Open Port Detected (80/HTTP)",
+          "description": "Port 80 running HTTP is open on the target host.",
+          "evidence": "Service: HTTP\nBanner: None captured",
+          "remediation": "Ensure this port is firewalled and not exposed to the public internet unless required. If running, ensure it uses secure credentials and up-to-date software versions."
+        }
+      ]
+    },
+    "headers": {
+      "url": "http://scanme.nmap.org",
+      "headers": {
+        "date": "Mon, 22 Jun 2026 14:17:14 GMT",
+        "server": "Apache/2.4.7 (Ubuntu)",
+        "accept-ranges": "bytes",
+        "vary": "Accept-Encoding",
+        "content-encoding": "gzip",
+        "content-length": "2068",
+        "keep-alive": "timeout=5, max=100",
+        "connection": "Keep-Alive",
+        "content-type": "text/html"
+      },
+      "findings": [
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "MEDIUM",
+          "title": "Missing HTTP Strict Transport Security (HSTS) Header",
+          "description": "HTTP Strict Transport Security (HSTS) instructs the browser to always connect using HTTPS, preventing SSL stripping attacks.",
+          "evidence": "Header 'strict-transport-security' was not found in response.",
+          "remediation": "Add the 'Strict-Transport-Security: max-age=31536000; includeSubDomains' header to your web server configuration."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "HIGH",
+          "title": "Missing Content Security Policy (CSP) Header",
+          "description": "Content Security Policy (CSP) restricts the resources (such as JavaScript, CSS, Images) that the browser is allowed to load for a given page, offering defense-in-depth against XSS.",
+          "evidence": "Header 'content-security-policy' was not found in response.",
+          "remediation": "Implement a robust Content Security Policy header. For example: Content-Security-Policy: default-src 'self';"
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "LOW",
+          "title": "Missing X-Content-Type-Options Header",
+          "description": "The X-Content-Type-Options response HTTP header is a marker used by the server to indicate that the MIME types advertised in the Content-Type headers should not be changed and be followed.",
+          "evidence": "Header 'x-content-type-options' was not found in response.",
+          "remediation": "Configure the web server to send the X-Content-Type-Options: nosniff header."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "MEDIUM",
+          "title": "Missing X-Frame-Options Header",
+          "description": "X-Frame-Options prevents the website from being loaded in an iframe or object, which protects users against clickjacking attacks.",
+          "evidence": "Header 'x-frame-options' was not found in response.",
+          "remediation": "Configure the web server to send X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN header, or use the CSP frame-ancestors directive."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "INFO",
+          "title": "Missing Referrer-Policy Header",
+          "description": "The Referrer-Policy HTTP header controls how much referrer information (sent via the Referer header) should be included with requests.",
+          "evidence": "Header 'referrer-policy' was not found in response.",
+          "remediation": "Add the Referrer-Policy: strict-origin-when-cross-origin header to web responses."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "INFO",
+          "title": "Missing Permissions-Policy Header",
+          "description": "Permissions-Policy allows developers to selectively enable, disable, and modify the behavior of various APIs and browser features (camera, geolocation, etc.).",
+          "evidence": "Header 'permissions-policy' was not found in response.",
+          "remediation": "Add a Permissions-Policy header configured with restricted features (e.g., geolocation=(), camera=())."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "LOW",
+          "title": "Missing Cache-Control Header",
+          "description": "The response does not include a Cache-Control header. Without explicit caching directives, browsers and proxies may cache the response, potentially storing sensitive data on disk or in shared caches.",
+          "evidence": "Cache-Control header was not found in the response.",
+          "remediation": "Add 'Cache-Control: no-store, no-cache, must-revalidate' to responses containing sensitive or user-specific data."
+        },
+        {
+          "module": "Header Scanner",
+          "target": "http://scanme.nmap.org",
+          "severity": "LOW",
+          "title": "Web Server Signature Disclosure",
+          "description": "The server header discloses details about the web server backend software and potentially its version.",
+          "evidence": "Server: Apache/2.4.7 (Ubuntu)",
+          "remediation": "Disable or strip the 'server' header in your web server configuration (e.g., exposeHeaders / ServerTokens off)."
+        }
+      ]
+    },
+    "ssl": {
+      "error": "Failed to negotiate SSL connection: [WinError 10061] No connection could be made because the target machine actively refused it",
+      "findings": []
+    },
+    "dns": {
+      "host": "scanme.nmap.org",
+      "records": {
+        "A": [
+          "45.33.32.156"
+        ],
+        "AAAA": [],
+        "PTR": "scanme.nmap.org"
+      },
+      "findings": []
+    }
+  },
+  "plugins": {}
+}

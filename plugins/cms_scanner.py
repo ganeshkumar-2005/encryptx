@@ -3,11 +3,25 @@ from bs4 import BeautifulSoup
 from .base_plugin import BasePlugin
 from utils.helpers import make_web_request
 
+
 class CMSPlugin(BasePlugin):
     PLUGIN_ID = "10003"
     PLUGIN_NAME = "CMS Vulnerability Scanner"
     PLUGIN_FAMILY = "Web CMS"
-    PLUGIN_VERSION = "1.0"
+    PLUGIN_VERSION = "1.1"
+
+    # Commonly-vulnerable WordPress plugins to probe for during enumeration.
+    # Each tuple is (slug, human-readable name).
+    WP_PLUGIN_TARGETS = [
+        ("contact-form-7", "Contact Form 7"),
+        ("woocommerce", "WooCommerce"),
+        ("wordpress-seo", "Yoast SEO"),
+        ("elementor", "Elementor"),
+        ("wpforms-lite", "WPForms Lite"),
+        ("classic-editor", "Classic Editor"),
+        ("akismet", "Akismet"),
+        ("jetpack", "Jetpack"),
+    ]
 
     def run(self, progress_callback=None) -> dict:
         """Scan target for CMS fingerprints and versions."""
@@ -16,14 +30,22 @@ class CMSPlugin(BasePlugin):
         self.check_drupal()
         return self.get_results()
 
+    # ------------------------------------------------------------------
+    # WordPress checks
+    # ------------------------------------------------------------------
+
     def check_wordpress(self):
         """WordPress vulnerability scanner checks."""
         # WordPress indicators
         wp_paths = ["/wp-content/", "/wp-includes/", "/wp-links-opml.php"]
         is_wp = False
-        
+
         # Probe index first
-        index_res = make_web_request(self.url, timeout=self.timeout)
+        try:
+            index_res = make_web_request(self.url, timeout=self.timeout)
+        except Exception:
+            index_res = None
+
         if index_res and index_res.status_code == 200:
             if any(path in index_res.text for path in wp_paths):
                 is_wp = True
@@ -33,12 +55,15 @@ class CMSPlugin(BasePlugin):
 
         version = "Unknown"
         # Try to find generator meta tag
-        soup = BeautifulSoup(index_res.text, "html.parser")
-        gen_meta = soup.find("meta", attrs={"name": "generator"})
-        if gen_meta and "WordPress" in gen_meta.get("content", ""):
-            version_match = re.search(r"WordPress\s+([0-9\.]+)", gen_meta["content"])
-            if version_match:
-                version = version_match.group(1)
+        try:
+            soup = BeautifulSoup(index_res.text, "html.parser")
+            gen_meta = soup.find("meta", attrs={"name": "generator"})
+            if gen_meta and "WordPress" in gen_meta.get("content", ""):
+                version_match = re.search(r"WordPress\s+([0-9\.]+)", gen_meta["content"])
+                if version_match:
+                    version = version_match.group(1)
+        except Exception:
+            pass
 
         self.add_finding(
             title="WordPress CMS Detected",
@@ -50,8 +75,15 @@ class CMSPlugin(BasePlugin):
         )
 
         # WP XMLRPC Abuse check
+        # NOTE: CVE-2018-7600 is Drupalgeddon 2 (Drupal-only) and does NOT
+        # apply to WordPress XML-RPC. The finding here is about brute-force
+        # amplification and DDoS via system.multicall — no specific CVE.
         xmlrpc_url = f"{self.url}/xmlrpc.php"
-        xmlrpc_res = make_web_request(xmlrpc_url, timeout=self.timeout)
+        try:
+            xmlrpc_res = make_web_request(xmlrpc_url, timeout=self.timeout)
+        except Exception:
+            xmlrpc_res = None
+
         if xmlrpc_res and xmlrpc_res.status_code == 200 and "XML-RPC server accepts POST requests" in xmlrpc_res.text:
             self.add_finding(
                 title="WordPress XML-RPC Enabled",
@@ -59,13 +91,17 @@ class CMSPlugin(BasePlugin):
                 description="WordPress XML-RPC interface is enabled on the server, permitting external APIs to communicate. This can be exploited for brute-force attacks and DDoS amplification.",
                 evidence=f"XML-RPC endpoint active at: {xmlrpc_url}",
                 remediation="Disable XML-RPC by using a plugin or blocking xmlrpc.php via .htaccess / Nginx config.",
-                cve_ids=["CVE-2018-7600"], # Generic XMLRPC DDoS references
+                # No CVE — XML-RPC DDoS amplification is a design risk, not a specific CVE
                 cvss=5.3
             )
 
-        # WP User Enumeration
+        # WP User Enumeration — REST API endpoint
         user_url = f"{self.url}/wp-json/wp/v2/users"
-        user_res = make_web_request(user_url, timeout=self.timeout)
+        try:
+            user_res = make_web_request(user_url, timeout=self.timeout)
+        except Exception:
+            user_res = None
+
         if user_res and user_res.status_code == 200 and "slug" in user_res.text:
             try:
                 users = user_res.json()
@@ -82,12 +118,129 @@ class CMSPlugin(BasePlugin):
             except Exception:
                 pass
 
+        # WP User Enumeration — Author archive redirect method
+        # Requesting ?author=N causes WordPress to 301-redirect to /author/<slug>/
+        # when the user ID exists. This works even when the REST API is locked down.
+        self._enumerate_wp_authors()
+
+        # WP Plugin Enumeration — probe readme.txt for common plugins
+        self._enumerate_wp_plugins()
+
+    def _enumerate_wp_authors(self):
+        """Enumerate WordPress usernames via ?author=N archive redirects.
+
+        WordPress redirects /?author=<id> → /author/<username>/ with a 301
+        when that user ID exists.  We probe author IDs 1–10 and extract the
+        slug from the Location header.
+        """
+        discovered_users = []
+
+        for author_id in range(1, 11):
+            author_url = f"{self.url}/?author={author_id}"
+            try:
+                # Disable follow-redirects so we can inspect the Location header
+                author_res = make_web_request(
+                    author_url, timeout=self.timeout, allow_redirects=False
+                )
+            except Exception:
+                continue
+
+            if author_res is None:
+                continue
+
+            # WordPress returns 301/302 redirect to /author/<slug>/
+            if author_res.status_code in (301, 302):
+                location = author_res.headers.get("Location", "")
+                # Extract username from /author/<username>/ path
+                match = re.search(r"/author/([^/]+)/?", location)
+                if match:
+                    discovered_users.append(match.group(1))
+
+        if discovered_users:
+            self.add_finding(
+                title="WordPress Author Archive User Enumeration",
+                severity="MEDIUM",
+                description=(
+                    "WordPress author archive redirects expose valid usernames. "
+                    "An attacker can iterate ?author=N to discover login accounts "
+                    "for brute-force attacks."
+                ),
+                evidence=(
+                    f"Discovered usernames via author redirect: "
+                    f"{', '.join(discovered_users)}"
+                ),
+                remediation=(
+                    "Disable author archives or install a plugin that blocks "
+                    "?author=N enumeration. Consider using the "
+                    "'discourage_author_enumeration' approach in .htaccess/Nginx."
+                ),
+                cvss=5.3
+            )
+
+    def _enumerate_wp_plugins(self):
+        """Probe for commonly-vulnerable WordPress plugins by requesting
+        their readme.txt file and extracting the 'Stable tag:' version.
+
+        Detection methodology: WordPress plugins publish a readme.txt in
+        their directory root.  If the file is publicly accessible (HTTP 200),
+        the plugin is installed.  The 'Stable tag:' header inside the readme
+        tells us the installed version, which can be cross-referenced against
+        known CVE databases.
+        """
+        detected_plugins = []
+
+        for slug, friendly_name in self.WP_PLUGIN_TARGETS:
+            readme_url = f"{self.url}/wp-content/plugins/{slug}/readme.txt"
+            try:
+                readme_res = make_web_request(readme_url, timeout=self.timeout)
+            except Exception:
+                continue
+
+            if readme_res is None or readme_res.status_code != 200:
+                continue
+
+            # Extract version from "Stable tag:" line (standard WP readme header)
+            version = "Unknown"
+            stable_match = re.search(
+                r"Stable\s+tag:\s*([^\s\r\n]+)", readme_res.text, re.IGNORECASE
+            )
+            if stable_match:
+                version = stable_match.group(1)
+
+            detected_plugins.append(f"{friendly_name} ({slug}) v{version}")
+
+        if detected_plugins:
+            self.add_finding(
+                title="WordPress Installed Plugins Detected",
+                severity="LOW",
+                description=(
+                    "One or more WordPress plugins were identified by probing "
+                    "their public readme.txt files. Exposed version information "
+                    "helps attackers locate known CVEs for each plugin."
+                ),
+                evidence=f"Detected plugins: {'; '.join(detected_plugins)}",
+                remediation=(
+                    "Block direct access to plugin readme.txt files via server "
+                    "configuration. Keep all plugins updated to the latest "
+                    "security releases."
+                ),
+                cvss=3.7
+            )
+
+    # ------------------------------------------------------------------
+    # Joomla checks
+    # ------------------------------------------------------------------
+
     def check_joomla(self):
         """Joomla vulnerability scanner checks."""
         joomla_detected = False
-        
+
         # Test Administrator panel and media assets
-        res = make_web_request(f"{self.url}/administrator/", timeout=self.timeout)
+        try:
+            res = make_web_request(f"{self.url}/administrator/", timeout=self.timeout)
+        except Exception:
+            res = None
+
         if res and (res.status_code == 200 or "joomla" in res.text.lower()):
             joomla_detected = True
 
@@ -97,7 +250,11 @@ class CMSPlugin(BasePlugin):
         # Check configuration backups
         config_files = ["/configuration.php.bak", "/configuration.php~", "/configuration.php.old"]
         for cfile in config_files:
-            cres = make_web_request(f"{self.url}{cfile}", timeout=self.timeout)
+            try:
+                cres = make_web_request(f"{self.url}{cfile}", timeout=self.timeout)
+            except Exception:
+                cres = None
+
             if cres and cres.status_code == 200 and ("$host" in cres.text or "$password" in cres.text):
                 self.add_finding(
                     title="Joomla configuration.php Backup Exposed",
@@ -108,15 +265,28 @@ class CMSPlugin(BasePlugin):
                     cvss=7.5
                 )
 
+    # ------------------------------------------------------------------
+    # Drupal checks
+    # ------------------------------------------------------------------
+
     def check_drupal(self):
         """Drupal vulnerability scanner checks."""
         drupal_detected = False
-        res = make_web_request(f"{self.url}/core/misc/drupal.js", timeout=self.timeout)
+
+        try:
+            res = make_web_request(f"{self.url}/core/misc/drupal.js", timeout=self.timeout)
+        except Exception:
+            res = None
+
         if res and res.status_code == 200:
             drupal_detected = True
         else:
             # Check headers/meta generator
-            idx_res = make_web_request(self.url, timeout=self.timeout)
+            try:
+                idx_res = make_web_request(self.url, timeout=self.timeout)
+            except Exception:
+                idx_res = None
+
             if idx_res and "Drupal" in idx_res.text:
                 drupal_detected = True
 
@@ -125,7 +295,11 @@ class CMSPlugin(BasePlugin):
 
         # Try to find version from CHANGELOG.txt
         version = "Unknown"
-        changelog_res = make_web_request(f"{self.url}/CHANGELOG.txt", timeout=self.timeout)
+        try:
+            changelog_res = make_web_request(f"{self.url}/CHANGELOG.txt", timeout=self.timeout)
+        except Exception:
+            changelog_res = None
+
         if changelog_res and changelog_res.status_code == 200:
             match = re.search(r"Drupal\s+([0-9\.]+)", changelog_res.text)
             if match:
@@ -152,7 +326,7 @@ class CMSPlugin(BasePlugin):
                         is_vulnerable = True
                     elif parts[0] == 8 and parts[1] < 5:
                         is_vulnerable = True
-                
+
                 if is_vulnerable:
                     self.add_finding(
                         title="Outdated Drupal Version (Drupalgeddon RCE Vulnerability)",

@@ -1,5 +1,5 @@
 import re
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from utils.helpers import make_web_request
 
 class InfoDisclosureScanner:
@@ -19,9 +19,14 @@ class InfoDisclosureScanner:
         }
 
     def _extract_comments(self, html: str) -> list:
-        """Finds HTML comments that might disclose system features or TODOs."""
+        """Finds HTML comments that might disclose system features or TODOs.
+        
+        Uses BeautifulSoup's Comment type to properly extract HTML comments
+        (<!-- ... -->) rather than string matching, which would miss them.
+        """
         soup = BeautifulSoup(html, "html.parser")
-        comments = soup.find_all(string=lambda text: isinstance(text, str) and text.strip().startswith("<!--"))
+        # BeautifulSoup Comment objects contain just the comment text (without <!-- -->)
+        comments = soup.find_all(string=lambda text: isinstance(text, Comment))
         
         findings = []
         for comment in comments:

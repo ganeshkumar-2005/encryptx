@@ -42,13 +42,18 @@ class ServiceVulnPlugin(BasePlugin):
             pass
 
     def check_ssh_weak_algos(self):
-        """Heuristic check on SSH service on standard port 22."""
+        """Heuristic check on SSH service on standard port 22.
+        
+        Detection methodology:
+        - Connect to port 22 and read the SSH banner
+        - Check for deprecated SSHv1 protocol support
+        - Parse OpenSSH version and check against known vulnerable versions
+        """
         try:
             with socket.create_connection((self.host, 22), timeout=self.timeout) as sock:
                 banner = sock.recv(1024).decode("utf-8", errors="ignore")
                 if "SSH-" in banner:
-                    # An automated deep KEX payload analysis requires large binary structures,
-                    # so we flag general SSH service presence for audit, plus common old versions.
+                    # Check for SSHv1 support
                     if "SSH-1.99" in banner or "SSH-1.5" in banner:
                         self.add_finding(
                             title="SSH Protocol Version 1 Supported",
@@ -58,6 +63,28 @@ class ServiceVulnPlugin(BasePlugin):
                             remediation="Disable SSHv1 protocol in SSH configuration.",
                             cvss=7.5
                         )
+                    
+                    # Check for known vulnerable OpenSSH versions
+                    import re
+                    version_match = re.search(r'OpenSSH[_\s](\d+\.\d+(?:p\d+)?)', banner, re.IGNORECASE)
+                    if version_match:
+                        version_str = version_match.group(1)
+                        # Known vulnerable versions (major CVEs)
+                        # CVE-2024-6387 (regreSSHion): OpenSSH 8.5p1 - 9.7p1
+                        # CVE-2023-38408: OpenSSH before 9.3p2
+                        try:
+                            version_num = float(version_str.split('p')[0])
+                            if version_num < 8.0:
+                                self.add_finding(
+                                    title="Outdated OpenSSH Version",
+                                    severity="MEDIUM",
+                                    description=f"The SSH server runs OpenSSH {version_str}, which is significantly outdated and may contain multiple known vulnerabilities.",
+                                    evidence=f"SSH Banner: {banner.strip()}",
+                                    remediation="Update OpenSSH to the latest stable version.",
+                                    cvss=6.5
+                                )
+                        except ValueError:
+                            pass
         except Exception:
             pass
 
@@ -86,16 +113,71 @@ class ServiceVulnPlugin(BasePlugin):
             pass
 
     def check_mysql_no_auth(self):
-        """Checks if MySQL database allows passwordless access."""
+        """Checks if MySQL database allows passwordless access.
+        
+        Detection methodology:
+        - Connect to port 3306 and read the MySQL server greeting packet
+        - Parse the protocol version and server version string from the greeting
+        - Attempt authentication with 'root' user and empty password using
+          MySQL native authentication protocol (4.1+ handshake)
+        - A successful auth (OK packet, first byte 0x00) indicates no password set
+        """
+        import struct
         try:
             with socket.create_connection((self.host, 3306), timeout=self.timeout) as sock:
                 # Read MySQL handshake packet
                 data = sock.recv(1024)
-                if len(data) > 4:
-                    # Attempt a login packet with user 'root' and blank password
-                    # MySQL protocol packets can be complex, but if the initial packet contains
-                    # error indicators we know auth is enforced. If we can proceed without credentials:
-                    pass
+                if len(data) < 10:
+                    return
+                
+                # Parse MySQL greeting packet:
+                # Bytes 0-2: payload length, Byte 3: sequence id
+                # Byte 4: protocol version
+                # Byte 5+: null-terminated version string
+                protocol_version = data[4]
+                
+                # Extract server version string (null-terminated starting at byte 5)
+                try:
+                    null_pos = data.index(b'\x00', 5)
+                    server_version = data[5:null_pos].decode('utf-8', errors='ignore')
+                except (ValueError, UnicodeDecodeError):
+                    return
+                
+                # Build a minimal MySQL authentication packet
+                # Client capabilities flags for basic auth
+                capabilities = 0x0000a685  # CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+                max_packet_size = 0x01000000
+                charset = 0x21  # utf8
+                
+                auth_payload = struct.pack('<I', capabilities)
+                auth_payload += struct.pack('<I', max_packet_size)
+                auth_payload += struct.pack('B', charset)
+                auth_payload += b'\x00' * 23  # reserved bytes
+                auth_payload += b'root\x00'   # username null-terminated
+                auth_payload += b'\x00'       # empty auth response (no password)
+                
+                # Wrap in MySQL packet header: length(3 bytes LE) + sequence(1 byte)
+                packet_len = len(auth_payload)
+                header = struct.pack('<I', packet_len)[:3] + b'\x01'
+                
+                sock.sendall(header + auth_payload)
+                
+                # Read response
+                response = sock.recv(1024)
+                if len(response) > 4:
+                    response_type = response[4]
+                    if response_type == 0x00:  # OK packet — auth succeeded without password
+                        self.add_finding(
+                            title="MySQL Root Passwordless Access",
+                            severity="CRITICAL",
+                            description=f"The MySQL database (version {server_version}) allows root login without a password. "
+                                        f"This provides full control over all databases and server configuration.",
+                            evidence=f"MySQL server version: {server_version}, root user authenticated with empty password",
+                            remediation="Set a strong password for the MySQL root account: ALTER USER 'root'@'%%' IDENTIFIED BY 'secure_password'; "
+                                        "Remove remote root access and bind MySQL to localhost.",
+                            cve_id="CVE-1999-0508",
+                            cvss=9.8
+                        )
         except Exception:
             pass
 

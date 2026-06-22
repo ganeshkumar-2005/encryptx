@@ -131,17 +131,19 @@ class SSLScanner:
                     })
 
                 # Check cipher suite strength
-                weak_ciphers = ["RC4", "3DES", "DES", "MD5", "EXPORT", "NULL", "CBC"]
+                # Note: CBC mode with TLS 1.2+ and proper mitigations is acceptable.
+                # Only flag truly broken/deprecated ciphers.
+                weak_ciphers = ["RC4", "3DES", "DES", "MD5", "EXPORT", "NULL", "anon"]
                 negotiated_cipher = cipher[0]
-                if any(w in negotiated_cipher for w in weak_ciphers):
+                if any(w.lower() in negotiated_cipher.lower() for w in weak_ciphers):
                     findings.append({
                         "module": "SSL/TLS Scanner",
                         "target": f"{self.host}:{self.port}",
                         "severity": "MEDIUM",
                         "title": "Weak SSL/TLS Cipher Suite Negotiated",
-                        "description": f"The server negotiated a cipher suite that includes weak algorithms ({negotiated_cipher}).",
+                        "description": f"The server negotiated a cipher suite that includes weak or deprecated algorithms ({negotiated_cipher}).",
                         "evidence": f"Cipher Suite: {negotiated_cipher}",
-                        "remediation": "Update the server cipher configuration to disallow weak ciphers (RC4, 3DES, DES, MD5, and CBC-mode ciphers where possible) and prioritize forward-secrecy cipher suites like ECDHE."
+                        "remediation": "Update the server cipher configuration to disallow weak ciphers (RC4, 3DES, DES, NULL, anonymous, EXPORT-grade) and prioritize forward-secrecy cipher suites like ECDHE-AES-GCM."
                     })
             else:
                 findings.append({

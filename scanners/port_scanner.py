@@ -11,16 +11,38 @@ class PortScanner:
         else:
             self.target = target.split("/")[0].split(":")[0]
             
-        self.ports = ports or [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3389, 5900, 8080]
+        # Expanded default port list: 50+ common ports covering services like
+        # FTP, SSH, HTTP(S), databases, message queues, admin panels, caches,
+        # container orchestration, and Hadoop/Elasticsearch clusters.
+        self.ports = ports or [
+            21, 22, 23, 25, 53, 80, 110, 111, 135, 139,
+            143, 443, 445, 993, 995, 1433, 1521, 1723, 2049, 3306,
+            3389, 4443, 4444, 5432, 5672, 5900, 5985, 6379, 6443, 8000,
+            8001, 8008, 8080, 8081, 8082, 8443, 8880, 8888, 9000, 9090,
+            9200, 9300, 9443, 10250, 11211, 15672, 27017, 27018, 50000,
+            50070, 50075
+        ]
         self.timeout = timeout
         self.common_services = {
             21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
             80: "HTTP", 110: "POP3", 111: "RPCBind", 135: "MSRPC",
             139: "NetBIOS", 143: "IMAP", 443: "HTTPS", 445: "Microsoft-DS",
             993: "IMAPS", 995: "POP3S", 1433: "MSSQL", 1521: "Oracle",
-            1723: "PPTP", 3306: "MySQL", 3389: "RDP", 5432: "PostgreSQL",
-            5900: "VNC", 6379: "Redis", 8080: "HTTP-Proxy", 8443: "HTTPS-Alt",
-            9200: "Elasticsearch", 27017: "MongoDB"
+            1723: "PPTP", 2049: "NFS", 3306: "MySQL", 3389: "RDP",
+            4443: "HTTPS-Alt", 4444: "Metasploit/Custom",
+            5432: "PostgreSQL", 5672: "RabbitMQ-AMQP",
+            5900: "VNC", 5985: "WinRM",
+            6379: "Redis", 6443: "Kubernetes-API",
+            8000: "HTTP-Alt", 8001: "HTTP-Alt", 8008: "HTTP-Alt",
+            8080: "HTTP-Proxy", 8081: "HTTP-Alt", 8082: "HTTP-Alt",
+            8443: "HTTPS-Alt", 8880: "HTTP-Alt", 8888: "HTTP-Alt",
+            9000: "SonarQube/PHP-FPM", 9090: "Prometheus/Cockpit",
+            9200: "Elasticsearch", 9300: "Elasticsearch-Transport",
+            9443: "HTTPS-Alt", 10250: "Kubelet",
+            11211: "Memcached", 15672: "RabbitMQ-Mgmt",
+            27017: "MongoDB", 27018: "MongoDB-Shard",
+            50000: "SAP/Jenkins-Agent", 50070: "Hadoop-NameNode",
+            50075: "Hadoop-DataNode"
         }
 
     def _grab_banner(self, sock: socket.socket) -> str:
@@ -32,8 +54,8 @@ class PortScanner:
             banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
             if banner:
                 return banner
-            # Try HTTP probe
-            sock.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            # Try HTTP probe — use actual target hostname, not localhost
+            sock.sendall(f"GET / HTTP/1.1\r\nHost: {self.target}\r\n\r\n".encode('utf-8'))
             banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
             if "Server:" in banner:
                 for line in banner.split("\r\n"):

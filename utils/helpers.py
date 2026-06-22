@@ -76,11 +76,16 @@ def severity_icon(severity: str) -> str:
     return "[INFO]"
 
 def make_web_request(url: str, method: str = "GET", headers: dict = None, 
-                     params: dict = None, data: dict = None, timeout: float = 5.0, 
+                     params: dict = None, data=None, json_data=None, timeout: float = 5.0, 
                      allow_redirects: bool = True) -> requests.Response:
-    """Helper wrapper to execute web requests safely with standard user agent."""
+    """Helper wrapper to execute web requests safely with standard user agent.
+    
+    Args:
+        json_data: If provided, sends as JSON body (Content-Type: application/json).
+                   Mutually exclusive with data - json_data takes priority if both given.
+    """
     default_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EncryptX-Security-Audit/1.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     if headers:
         default_headers.update(headers)
@@ -91,7 +96,8 @@ def make_web_request(url: str, method: str = "GET", headers: dict = None,
             url=url,
             headers=default_headers,
             params=params,
-            data=data,
+            data=data if json_data is None else None,
+            json=json_data,
             timeout=timeout,
             allow_redirects=allow_redirects
         )

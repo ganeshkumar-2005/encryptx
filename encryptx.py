@@ -362,6 +362,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
 
     # Save scan data to output JSON
     ts = get_timestamp()
+    os.makedirs("output", exist_ok=True)
     output_filename = f"output/scan_{ts}.json"
     with open(output_filename, "w") as f:
         json.dump(results, f, indent=2)
