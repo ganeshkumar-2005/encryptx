@@ -138,15 +138,15 @@ def simulate_demo():
     table.add_column("Target/URL", justify="left")
     
     findings = [
-        ("[bold red][CRITICAL] CRITICAL[/bold red]", "Service Vulnerability Scanner", "MySQL Passwordless Root Login Allowed", "scanme.nmap.org:3306"),
-        ("[red][HIGH] HIGH[/red]", "Header Scanner", "Missing Content Security Policy (CSP) Header", "http://scanme.nmap.org"),
-        ("[yellow][WARN] MEDIUM[/yellow]", "Port Scanner", "Open Port Detected (22/SSH)", "scanme.nmap.org:22"),
-        ("[yellow][WARN] MEDIUM[/yellow]", "Header Scanner", "Missing HTTP Strict Transport Security (HSTS) Header", "http://scanme.nmap.org"),
-        ("[yellow][WARN] MEDIUM[/yellow]", "Header Scanner", "Missing X-Frame-Options Header", "http://scanme.nmap.org"),
-        ("[blue][LOW] LOW[/blue]", "Header Scanner", "Missing X-Content-Type-Options Header", "http://scanme.nmap.org"),
-        ("[blue][LOW] LOW[/blue]", "Header Scanner", "Web Server Signature Disclosure", "http://scanme.nmap.org"),
-        ("[green][INFO] INFO[/green]", "Port Scanner", "Open Port Detected (80/HTTP)", "scanme.nmap.org:80"),
-        ("[green][INFO] INFO[/green]", "Header Scanner", "Missing Referrer-Policy Header", "http://scanme.nmap.org")
+        ("[bold red]CRITICAL[/bold red]", "Service Vulnerability Scanner", "MySQL Passwordless Root Login Allowed", "scanme.nmap.org:3306"),
+        ("[red]HIGH[/red]", "Header Scanner", "Missing Content Security Policy (CSP) Header", "http://scanme.nmap.org"),
+        ("[yellow]MEDIUM[/yellow]", "Port Scanner", "Open Port Detected (22/SSH)", "scanme.nmap.org:22"),
+        ("[yellow]MEDIUM[/yellow]", "Header Scanner", "Missing HTTP Strict Transport Security (HSTS) Header", "http://scanme.nmap.org"),
+        ("[yellow]MEDIUM[/yellow]", "Header Scanner", "Missing X-Frame-Options Header", "http://scanme.nmap.org"),
+        ("[blue]LOW[/blue]", "Header Scanner", "Missing X-Content-Type-Options Header", "http://scanme.nmap.org"),
+        ("[blue]LOW[/blue]", "Header Scanner", "Web Server Signature Disclosure", "http://scanme.nmap.org"),
+        ("[green]INFO[/green]", "Port Scanner", "Open Port Detected (80/HTTP)", "scanme.nmap.org:80"),
+        ("[green]INFO[/green]", "Header Scanner", "Missing Referrer-Policy Header", "http://scanme.nmap.org")
     ]
     
     for row in findings:

@@ -58,3 +58,6 @@ output/*
 .vscode/
 *.swp
 *.swo
+
+# Asciinema GIF Generator binary
+agg.exe
