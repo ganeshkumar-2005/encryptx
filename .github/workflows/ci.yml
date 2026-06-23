@@ -1,4 +1,4 @@
-name: EncryptX CI
+name: ScopeX CI
 
 on:
   push:

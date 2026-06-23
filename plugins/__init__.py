@@ -1,5 +1,5 @@
 """
-EncryptX Advanced Plugin System
+ScopeX Advanced Plugin System
 Nessus-style plugin architecture for deep vulnerability scanning.
 """
 from .base_plugin import BasePlugin

@@ -1,6 +1,6 @@
-# EncryptX — Python-Native VAPT Toolkit
+# ScopeX — Python-Native VAPT Toolkit
 
-![EncryptX Interactive Banner](assets/banner.png)
+![ScopeX Interactive Banner](assets/banner.png)
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -8,10 +8,10 @@
 [![Vulnerability Scanner](https://img.shields.io/badge/VAPT-OWASP%20%2F%20PCI--DSS-red.svg)](#)
 [![Legal Disclaimer](https://img.shields.io/badge/legal-disclaimer-red.svg)](DISCLAIMER.md)
 
-EncryptX is an advanced, terminal-based security auditing and vulnerability scanning toolkit built entirely in pure Python. It conducts high-accuracy, full-spectrum security assessments including port scanning, SQLi, XSS, SSRF, JWT auditing, and CVE mapping, and generates compliance scores and professional PDF reports without relying on heavy external binaries like Nmap or OpenSSL.
+ScopeX is an advanced, terminal-based security auditing and vulnerability scanning toolkit built entirely in pure Python. It conducts high-accuracy, full-spectrum security assessments including port scanning, SQLi, XSS, SSRF, JWT auditing, and CVE mapping, and generates compliance scores and professional PDF reports without relying on heavy external binaries like Nmap or OpenSSL.
 
 > [!CAUTION]
-> **LEGAL NOTICE**: Usage of EncryptX for scanning targets without prior written authorization is strictly prohibited. Before operating, read the complete terms in [DISCLAIMER.md](DISCLAIMER.md).
+> **LEGAL NOTICE**: Usage of ScopeX for scanning targets without prior written authorization is strictly prohibited. Before operating, read the complete terms in [DISCLAIMER.md](DISCLAIMER.md).
 
 Developed by **Ganesh Kumar**.
 
@@ -31,7 +31,7 @@ Developed by **Ganesh Kumar**.
 
 Below is the real-time terminal audit view when scanning a target:
 
-![EncryptX Terminal Scan Output](assets/scan_output.png)
+![ScopeX Terminal Scan Output](assets/scan_output.png)
 
 ---
 
@@ -41,8 +41,8 @@ Below is the real-time terminal audit view when scanning a target:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ganeshkumar-2005/encryptx.git
-   cd encryptx
+   git clone https://github.com/ganeshkumar-2005/scopex.git
+   cd scopex
    ```
 
 2. Set up virtual environment and install dependencies:
@@ -58,14 +58,14 @@ Below is the real-time terminal audit view when scanning a target:
 
 ### Basic Scan Command
 ```bash
-python encryptx.py scan --target example.com
+python scopex.py scan --target example.com
 ```
 
 ---
 
 ## ⚙️ Scan Profiles & Usage
 
-EncryptX matches target scope via predefined profiles:
+ScopeX matches target scope via predefined profiles:
 
 | Profile | Command Flag | Included Modules | Timeout |
 | :--- | :--- | :--- | :--- |
@@ -77,19 +77,19 @@ EncryptX matches target scope via predefined profiles:
 
 *   **Full Spectrum Scan** (Basic + Deep Scanners + All Plugins):
     ```bash
-    python encryptx.py scan --target example.com --all
+    python scopex.py scan --target example.com --all
     ```
 *   **Deep Web Vulnerabilities Scan Only** (SQLi, XSS, WAF, API):
     ```bash
-    python encryptx.py scan --target example.com --deep
+    python scopex.py scan --target example.com --deep
     ```
 *   **Automated Scan (Non-Interactive)**:
     ```bash
-    python encryptx.py scan --target example.com --all --force
+    python scopex.py scan --target example.com --all --force
     ```
 *   **Generate PDF Report**:
     ```bash
-    python encryptx.py report --input output/scan_20260623_080000.json
+    python scopex.py report --input output/scan_20260623_080000.json
     ```
 
 ---
@@ -280,11 +280,11 @@ Below is a preview of the generated executive security report, sorted by severit
 
 ## 🏛️ Project Architecture
 
-EncryptX runs concurrent checks asynchronously using Python thread pools, routing raw TCP bytes and HTTP packets direct to target servers:
+ScopeX runs concurrent checks asynchronously using Python thread pools, routing raw TCP bytes and HTTP packets direct to target servers:
 
 ```
-EncryptX/
-├── encryptx.py              # CLI Controller (Rich + Click)
+ScopeX/
+├── scopex.py              # CLI Controller (Rich + Click)
 ├── config.json              # Scan Profiles & Subdomain Lists
 ├── requirements.txt         # Core dependencies
 ├── scanners/                # 14 Protocol-level basic/deep scanners
@@ -304,15 +304,15 @@ EncryptX/
 
 ## ⚠️ Known Limitations & Tradeoffs
 
-To ensure a lightweight footprint, EncryptX uses pure Python implementations:
+To ensure a lightweight footprint, ScopeX uses pure Python implementations:
 
 *   **No Heavy Network Drivers (Nmap/Masscan)**: The port scanner runs in user space using Python's `socket` library. It does not perform SYN scanning (half-open) and relies on full TCP handshakes (`connect_ex`). This makes it slower and more visible in firewall logs than native binary tools.
-*   **No Native OpenSSL Wrapping**: Legitimate SSL testing tools (like `testssl.sh`) query remote endpoints by negotiating specific cipher suites using local OpenSSL binaries. EncryptX builds raw handshake payloads using Python's `ssl` module or custom socket bytes, which may not catch complex renegotiation bugs.
+*   **No Native OpenSSL Wrapping**: Legitimate SSL testing tools (like `testssl.sh`) query remote endpoints by negotiating specific cipher suites using local OpenSSL binaries. ScopeX builds raw handshake payloads using Python's `ssl` module or custom socket bytes, which may not catch complex renegotiation bugs.
 *   **Thread Pool Limits**: Multi-threading in Python is subject to the Global Interpreter Lock (GIL). For heavy networking, this is mostly fine (I/O bound), but dictionary brute-forcing of thousands of subdomains is less efficient than Go-based tools like `amass` or `subfinder`.
-*   **WAF Interference**: Because EncryptX uses standard HTTP requests, active WAFs can block its IP address during SQLi or XSS scanning, resulting in false negatives.
+*   **WAF Interference**: Because ScopeX uses standard HTTP requests, active WAFs can block its IP address during SQLi or XSS scanning, resulting in false negatives.
 
 ---
 
 ## ⚖️ Legal & Disclaimer
 
-**AUTHORIZED USE ONLY**: Usage of EncryptX for scanning targets without prior written authorization is strictly prohibited. The developer, **Ganesh Kumar**, assumes no liability for misuse, damage, or loss caused by this software.
+**AUTHORIZED USE ONLY**: Usage of ScopeX for scanning targets without prior written authorization is strictly prohibited. The developer, **Ganesh Kumar**, assumes no liability for misuse, damage, or loss caused by this software.

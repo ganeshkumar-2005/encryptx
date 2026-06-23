@@ -1,9 +1,9 @@
 @echo off
-title EncryptX Toolkit Launcher
+title ScopeX Toolkit Launcher
 cls
 
 echo =======================================================
-echo              ENCRYPTX LAUNCHER & WIZARD
+echo               SCOPEX LAUNCHER & WIZARD
 echo          Developed by Ganesh Kumar (Git Release)
 echo =======================================================
 echo.
@@ -26,16 +26,16 @@ echo.
 set /p mode="Choose option (1-4): "
 
 if "%mode%"=="1" (
-    python encryptx.py scan --target %target%
+    python scopex.py scan --target %target%
 ) else if "%mode%"=="2" (
-    python encryptx.py scan --target %target% --all
+    python scopex.py scan --target %target% --all
 ) else if "%mode%"=="3" (
-    python encryptx.py scan --target %target% --deep
+    python scopex.py scan --target %target% --deep
 ) else if "%mode%"=="4" (
-    python encryptx.py scan --target %target% --plugins
+    python scopex.py scan --target %target% --plugins
 ) else (
     echo [!] Invalid option. Running standard scan...
-    python encryptx.py scan --target %target%
+    python scopex.py scan --target %target%
 )
 
 echo.
@@ -56,7 +56,7 @@ if /i "%make_report%"=="y" (
     
     :generate
     echo Latest scan found: %latest_scan%
-    python encryptx.py report --input %latest_scan%
+    python scopex.py report --input %latest_scan%
 )
 
 :end

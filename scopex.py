@@ -33,7 +33,7 @@ def make_progress_callback(progress, task_id):
 
 @click.group()
 def cli():
-    """EncryptX — Terminal-Based Infrastructure Security Auditing Tool."""
+    """ScopeX — Terminal-Based Infrastructure Security Auditing Tool."""
     pass
 
 @cli.command()
@@ -41,7 +41,7 @@ def config():
     """Interactive wizard to view or customize configurations."""
     display_banner(console)
     conf = load_config()
-    console.print(Panel("[bold cyan]EncryptX Configuration Panel[/bold cyan]"))
+    console.print(Panel("[bold cyan]ScopeX Configuration Panel[/bold cyan]"))
     console.print(f"[yellow]Current Default Profile:[/yellow] {conf.get('default_profile', 'standard')}")
     console.print(f"[yellow]DNS Wordlist Size:[/yellow] {len(conf.get('dns_wordlist', []))} subdomains")
     
@@ -360,7 +360,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
     console.print(f"\n[green]* Scan complete! Results recorded to: [bold white]{output_filename}[/bold white][/green]")
 
     # Print summary findings to console
-    table = Table(title="EncryptX Vulnerability Scan Results", show_header=True, header_style="bold magenta")
+    table = Table(title="ScopeX Vulnerability Scan Results", show_header=True, header_style="bold magenta")
     table.add_column("Severity", justify="center")
     table.add_column("Module", justify="left")
     table.add_column("Title", justify="left")

@@ -1,7 +1,7 @@
 from fpdf import FPDF
 from utils.helpers import get_readable_timestamp
 
-class EncryptXReport(FPDF):
+class ScopeXReport(FPDF):
     def header(self):
         # Banner Header
         self.set_fill_color(30, 41, 59) # Slate Dark Blue
@@ -10,7 +10,7 @@ class EncryptXReport(FPDF):
         self.set_text_color(255, 255, 255)
         self.set_font("Helvetica", "B", 18)
         self.cell(10)
-        self.cell(0, 10, "ENCRYPTX SECURITY AUDIT REPORT", 0, 1, "L")
+        self.cell(0, 10, "SCOPEX SECURITY AUDIT REPORT", 0, 1, "L")
         
         self.set_font("Helvetica", "I", 10)
         self.cell(10)
@@ -26,7 +26,7 @@ class EncryptXReport(FPDF):
 
 def generate_pdf_report(scan_results: dict, output_filepath: str):
     """Generates a professional PDF audit report using fpdf2."""
-    pdf = EncryptXReport()
+    pdf = ScopeXReport()
     pdf.alias_nb_pages()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=20)
