@@ -24,7 +24,7 @@ If applicable, add screenshots or paste terminal logs/errors to help explain you
 **Environment (please complete the following information):**
 - OS: [e.g. Windows 11, Ubuntu 22.04]
 - Python Version: [e.g. 3.10.5]
-- EncryptX Version: [e.g. 1.0.0]
+- ScopeX Version: [e.g. 1.0.0]
 
 **Additional context**
 Add any other context about the problem here.

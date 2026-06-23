@@ -157,7 +157,7 @@ class CompliancePlugin(BasePlugin):
         self.add_finding(
             title=f"Security Posture Rating: GRADE {grade}",
             severity="INFO",
-            description=f"EncryptX evaluated target security score at Grade {grade}.",
+            description=f"ScopeX evaluated target security score at Grade {grade}.",
             evidence=f"Findings summary: {criticals} Critical, {highs} High, {mediums} Medium, {lows} Low",
             remediation=notes,
             cvss=0.0

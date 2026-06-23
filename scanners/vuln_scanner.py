@@ -364,18 +364,18 @@ class VulnScanner:
 
     def _check_crlf_injection(self, findings: list):
         """Tests CRLF injection in parameter handling."""
-        crlf_payload = "test%0d%0aSet-Cookie:%20encryptx_crlf=1"
+        crlf_payload = "test%0d%0aSet-Cookie:%20scopex_crlf=1"
         test_url = f"{self.url}?q={crlf_payload}"
         try:
             response = make_web_request(test_url, timeout=self.timeout)
-            if "encryptx_crlf" in response.headers.get("Set-Cookie", ""):
+            if "scopex_crlf" in response.headers.get("Set-Cookie", ""):
                 findings.append({
                     "module": "Vulnerability Scanner",
                     "target": test_url,
                     "severity": "HIGH",
                     "title": "CRLF Injection Vulnerability Detected",
                     "description": "The application reflects user input into HTTP headers without stripping Carriage Return (CR) and Line Feed (LF) characters, allowing HTTP response splitting or session fixation.",
-                    "evidence": f"Response header: Set-Cookie contains 'encryptx_crlf=1'",
+                    "evidence": f"Response header: Set-Cookie contains 'scopex_crlf=1'",
                     "remediation": "Sanitize user inputs before printing them into HTTP response headers, ensuring CR and LF characters are stripped or encoded."
                 })
         except Exception:

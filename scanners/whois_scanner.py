@@ -1,5 +1,5 @@
 """
-EncryptX WHOIS Scanner Module
+ScopeX WHOIS Scanner Module
 Performs WHOIS lookups on target domains to extract registration details,
 registrar info, expiration dates, and nameserver configurations.
 Uses raw socket connections to WHOIS servers (port 43) - no external dependencies.

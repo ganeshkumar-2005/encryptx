@@ -49,7 +49,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# EncryptX Output Scan Reports & PDFs (Must not be uploaded to public repo)
+# ScopeX Output Scan Reports & PDFs (Must not be uploaded to public repo)
 output/*
 !output/.gitkeep
 

@@ -1,5 +1,5 @@
 """
-BasePlugin - Abstract base class for all EncryptX plugins.
+BasePlugin - Abstract base class for all ScopeX plugins.
 Every plugin must inherit from this class and implement the run() method.
 Modeled after Nessus plugin architecture with CVE references, CVSS scoring,
 and standardized finding output format.
@@ -9,7 +9,7 @@ from datetime import datetime
 
 
 class BasePlugin(ABC):
-    """Base class that all EncryptX plugins must inherit from."""
+    """Base class that all ScopeX plugins must inherit from."""
     
     # Plugin metadata - override in subclass
     PLUGIN_ID = "0000"

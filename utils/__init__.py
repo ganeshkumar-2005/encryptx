@@ -1,1 +1,1 @@
-# EncryptX Utilities
+# ScopeX Utilities

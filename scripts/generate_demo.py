@@ -47,19 +47,17 @@ class CastRecorder:
         self.file.write(json.dumps(event) + "\n")
 
 BANNER_TEXT = r"""
-  ______                             _  __  __
- |  ____|                           | | \ \/ /
- | |__   _ __   ___ _ __ _   _ _ __ | |_ \  / 
- |  __| | '_ \ / __| '__| | | | '_ \| __| /  \ 
- | |____| | | | (__| |  | |_| | |_) | |_ /  \ \
- |______|_| |_|\___|_|   \__, | .__/ \__/_/\_\_\
-                          __/ | |               
-                         |___/|_|               
+      /-----|                         --  --
+     /  ____| ___ ___  _ __   ___    /  \/  \
+    (  (____ / __/ _ \| '_ \ / _ \   /  /\  \
+     \______) (_| (_) | |_) |  __/   \  \ \  \
+     |_____/ \___\___/| .__/ \___|   /  / /  /
+                      |_|
 """
 
 DISCLAIMER = """[bold red]LEGAL DISCLAIMER:[/bold red]
-EncryptX is a professional security auditing and vulnerability scanning toolkit.
-Usage of EncryptX for scanning targets without prior written authorization is strictly
+ScopeX is a professional security auditing and vulnerability scanning toolkit.
+Usage of ScopeX for scanning targets without prior written authorization is strictly
 prohibited and may violate computer crime laws (e.g., Computer Fraud and Abuse Act).
 The developers assume no liability for misuse, damage, or loss caused by this tool.
 
@@ -131,7 +129,7 @@ def simulate_demo():
     time.sleep(0.5)
     
     # 4. Table of findings
-    table = Table(title="EncryptX Vulnerability Scan Results", show_header=True, header_style="bold magenta")
+    table = Table(title="ScopeX Vulnerability Scan Results", show_header=True, header_style="bold magenta")
     table.add_column("Severity", justify="center")
     table.add_column("Module", justify="left")
     table.add_column("Title", justify="left")

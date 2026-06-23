@@ -1,4 +1,4 @@
-# EncryptX Scanners package initialization
+# ScopeX Scanners package initialization
 from .port_scanner import PortScanner
 from .header_scanner import HeaderScanner
 from .ssl_scanner import SSLScanner
