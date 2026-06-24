@@ -21,6 +21,7 @@ Developed by **Ganesh Kumar**.
 
 *   **14 Core Scanning Modules**: Built-in scanners for ports, headers, SSL/TLS, DNS, subdomains, WAF, cookies, API endpoints, WHOIS, and web vulnerabilities.
 *   **7 Advanced Nessus-Style Plugins**: Dynamic plugins check protocol vulnerabilities (e.g. Heartbleed CVE-2014-0160, Mysql empty pass, SMTP open relay) and server configurations.
+*   **Nuclei Integration**: Optional `--nuclei` flag to execute ProjectDiscovery's template-based Nuclei scanner in parallel, merging and deduplicating results.
 *   **Compliance & Risk Scoring Engine**: Maps findings to OWASP Top 10 and PCI-DSS requirements, calculating a letter-grade (A–F) health rating.
 *   **Professional PDF Reports**: Auto-compiles clean, executive-ready reports with color-coded severity panels, CVSS scores, and remediation steps.
 *   **Pure Python implementation**: Minimal dependencies (`requests`, `rich`, `click`, `fpdf2`, `beautifulsoup4`) running entirely in user-space.
@@ -87,6 +88,10 @@ ScopeX matches target scope via predefined profiles:
 *   **Deep Web Vulnerabilities Scan Only** (SQLi, XSS, WAF, API):
     ```bash
     python scopex.py scan --target example.com --deep
+    ```
+*   **Scan with Nuclei Integration**:
+    ```bash
+    python scopex.py scan --target example.com --nuclei
     ```
 *   **Automated Scan (Non-Interactive)**:
     ```bash
@@ -303,6 +308,7 @@ ScopeX/
 ├── reports/                 # PDF builder
 │   └── pdf_report.py        # FPDF2 engine
 └── utils/                   # Shared connection helpers & output colors
+    └── nuclei_integration.py # Nuclei scanner subprocess integration
 ```
 
 ---

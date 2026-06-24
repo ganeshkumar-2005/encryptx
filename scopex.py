@@ -15,6 +15,40 @@ from scanners import (
     WAFDetector, InfoDisclosureScanner, AuthScanner, APIScanner, WhoisScanner
 )
 from reports import generate_pdf_report
+import reports.pdf_report
+
+# --- Monkeypatch PDF Report Generator for ScopeX + Nuclei scan mode ---
+original_generate_pdf_report = reports.pdf_report.generate_pdf_report
+
+def custom_generate_pdf_report(scan_results: dict, output_filepath: str):
+    is_nuclei_mode = (
+        scan_results.get("scan_mode") == "ScopeX + Nuclei" or 
+        any(f.get("module") == "Nuclei Integration" for f in scan_results.get("findings", []))
+    )
+    original_header = reports.pdf_report.ScopeXReport.header
+    
+    if is_nuclei_mode:
+        def custom_header(self):
+            self.set_fill_color(30, 41, 59)
+            self.rect(0, 0, 210, 30, 'F')
+            self.set_text_color(255, 255, 255)
+            self.set_font("Helvetica", "B", 18)
+            self.cell(10)
+            self.cell(0, 10, "SCOPEX SECURITY AUDIT REPORT", 0, 1, "L")
+            self.set_font("Helvetica", "I", 10)
+            self.cell(10)
+            self.cell(0, 10, "Developed by Ganesh Kumar | ScopeX + Nuclei", 0, 0, "L")
+            self.ln(20)
+        reports.pdf_report.ScopeXReport.header = custom_header
+        
+    try:
+        original_generate_pdf_report(scan_results, output_filepath)
+    finally:
+        reports.pdf_report.ScopeXReport.header = original_header
+
+reports.pdf_report.generate_pdf_report = custom_generate_pdf_report
+reports.generate_pdf_report = custom_generate_pdf_report
+generate_pdf_report = custom_generate_pdf_report
 
 console = Console()
 
@@ -82,8 +116,9 @@ def config():
 @click.option("--plugin-ssrf", is_flag=True, help="Run SSRF & Path Traversal plugin.")
 @click.option("--plugin-compliance", is_flag=True, help="Run Compliance & Scoring plugin.")
 @click.option("--all", "run_all", is_flag=True, help="Run all available basic, deep, and plugin scans.")
+@click.option("--nuclei", is_flag=True, help="Run Nuclei integration scanner.")
 @click.option("--force", "-f", is_flag=True, help="Bypass interactive scan permission confirmation.")
-def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, cookies, waf, info, auth, api, whois, deep, plugins, plugin_ssl, plugin_services, plugin_cms, plugin_network, plugin_takeover, plugin_ssrf, plugin_compliance, run_all, force):
+def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, cookies, waf, info, auth, api, whois, deep, plugins, plugin_ssl, plugin_services, plugin_cms, plugin_network, plugin_takeover, plugin_ssrf, plugin_compliance, run_all, nuclei, force):
     """Audits targets for configuration flaws and security vulnerabilities."""
     display_banner(console)
     
@@ -94,7 +129,8 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
         "waf": waf, "info": info, "auth": auth, "api": api, "whois": whois, "deep": deep,
         "plugins": plugins, "plugin_ssl": plugin_ssl, "plugin_services": plugin_services,
         "plugin_cms": plugin_cms, "plugin_network": plugin_network, "plugin_takeover": plugin_takeover,
-        "plugin_ssrf": plugin_ssrf, "plugin_compliance": plugin_compliance, "run_all": run_all
+        "plugin_ssrf": plugin_ssrf, "plugin_compliance": plugin_compliance, "run_all": run_all,
+        "nuclei": nuclei
     }
 
     try:
@@ -139,14 +175,34 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
     if not any([ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, cookies, waf, info, auth, api, whois, deep, plugins, plugin_ssl, plugin_services, plugin_cms, plugin_network, plugin_takeover, plugin_ssrf, plugin_compliance, run_all]):
         run_ports = run_headers = run_ssl = run_dns = run_vulns = True
 
+    run_nuclei = nuclei or run_all
     results = {
         "target": validated_target,
         "timestamp": get_readable_timestamp(),
         "findings": [],
         "scans": {}
     }
+    if run_nuclei:
+        results["scan_mode"] = "ScopeX + Nuclei"
     
     all_findings = []
+    
+    nuclei_thread = None
+    nuclei_findings = []
+    if run_nuclei:
+        from utils.nuclei_integration import check_nuclei_installed, run_nuclei_integration
+        check_nuclei_installed()
+        
+        import threading
+        def worker():
+            nonlocal nuclei_findings
+            try:
+                nuclei_findings = run_nuclei_integration(validated_target)
+            except Exception as e:
+                console.print(f"[bold red]Nuclei Scan Error:[/bold red] {str(e)}")
+                
+        nuclei_thread = threading.Thread(target=worker)
+        nuclei_thread.start()
     
     # Set up Rich progress bar
     with Progress(
@@ -355,6 +411,30 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             except Exception as e:
                 progress.update(t, completed=100)
                 console.print(f"[bold red]Plugin Error ({plugin_id}):[/bold red] {str(e)}")
+
+        # Wait and merge Nuclei findings in parallel
+        if run_nuclei:
+            t_nuclei = progress.add_task("[cyan]Completing Nuclei Integration scan...", total=100)
+            if nuclei_thread:
+                nuclei_thread.join()
+            progress.update(t_nuclei, completed=100)
+            
+            results["scans"]["nuclei"] = {
+                "findings": nuclei_findings
+            }
+            
+            # Deduplicate by comparing title plus target
+            # Keep the ScopeX finding and discard the Nuclei duplicate.
+            scopex_findings = all_findings.copy()
+            scopex_keys = {(f.get("title"), f.get("target")) for f in scopex_findings}
+            
+            filtered_nuclei_findings = []
+            for nf in nuclei_findings:
+                key = (nf.get("title"), nf.get("target"))
+                if key not in scopex_keys:
+                    filtered_nuclei_findings.append(nf)
+                    
+            all_findings = scopex_findings + filtered_nuclei_findings
 
         # Run Compliance scoring last if enabled
         if run_plugins or kwargs.get("plugin_compliance"):
