@@ -82,7 +82,9 @@ class XSSScanner:
             
         # Parse DOM XSS threats first (on the root page)
         dom_threats = self._check_dom_xss(baseline_html)
+        seen_targets = set()
         for dt in dom_threats:
+            seen_targets.add((self.url, "dom", dt["context"]))
             findings.append({
                 "module": "XSS Scanner",
                 "target": self.url,
@@ -99,9 +101,34 @@ class XSSScanner:
             crawl_results = crawler.crawl()
             urls_with_params = crawl_results["urls_with_params"]
             form_targets = crawl_results["form_targets"]
+            all_pages_html = crawl_results.get("all_pages_html", {})
         except Exception:
             urls_with_params = []
             form_targets = []
+            all_pages_html = {}
+
+        # Loop over every (url, html) pair in crawl_result["all_pages_html"]
+        for page_url, page_html in all_pages_html.items():
+            # Skip it if it's the root URL (already checked earlier)
+            if page_url == self.url:
+                continue
+
+            page_dom_threats = self._check_dom_xss(page_html)
+            for dt in page_dom_threats:
+                dedup_key = (page_url, "dom", dt["context"])
+                if dedup_key in seen_targets:
+                    continue
+                seen_targets.add(dedup_key)
+
+                findings.append({
+                    "module": "XSS Scanner",
+                    "target": page_url,
+                    "severity": "MEDIUM",
+                    "title": "Potential DOM-Based XSS Detected",
+                    "description": f"The client-side JavaScript utilizes dynamic sources ({', '.join(dt['sources'])}) and outputs to dangerous sinks ({', '.join(dt['sinks'])}) which can facilitate DOM-based Cross-Site Scripting.",
+                    "evidence": f"Location: {dt['context']}\nSources found: {dt['sources']}\nSinks found: {dt['sinks']}\nSnippet: {dt['snippet']}",
+                    "remediation": "Avoid using dangerous sinks like innerHTML or eval. Use safe alternatives such as textContent or innerText, and implement robust sanitization using libraries like DOMPurify."
+                })
 
         # Calculate total steps across all targets
         total_steps = 0

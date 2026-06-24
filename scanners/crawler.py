@@ -27,6 +27,7 @@ class Crawler:
         urls_with_params = set()
         form_targets = []
         seen_forms = set()  # To deduplicate forms: (action, method, tuple(fields))
+        all_pages_html = {}
 
         queue = [self.root_url]
 
@@ -59,6 +60,18 @@ class Crawler:
                 visited_pages.add(clean_current)
                 if not response or response.status_code != 200:
                     continue
+
+                # Confirming it is HTML
+                is_html = True
+                if hasattr(response, "headers") and isinstance(response.headers, dict):
+                    content_type = response.headers.get("content-type", "") or response.headers.get("Content-Type", "")
+                    if content_type and "text/html" not in content_type.lower():
+                        is_html = False
+                
+                if not is_html:
+                    continue
+
+                all_pages_html[clean_current] = response.text
 
                 html_content = response.text
                 soup = BeautifulSoup(html_content, "html.parser")
@@ -168,5 +181,6 @@ class Crawler:
         return {
             "urls_with_params": sorted(list(urls_with_params)),
             "form_targets": form_targets,
-            "pages_visited": len(visited_pages)
+            "pages_visited": len(visited_pages),
+            "all_pages_html": all_pages_html
         }
