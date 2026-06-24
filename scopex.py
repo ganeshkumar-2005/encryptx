@@ -1,12 +1,14 @@
 import os
 import json
 import click
+import urllib.parse
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from utils.banner import display_banner
 from utils.helpers import validate_target, get_timestamp, get_readable_timestamp, severity_color, severity_icon
+from utils.crawler import Crawler
 from scanners import (
     PortScanner, HeaderScanner, SSLScanner, DNSScanner, SubdomainScanner,
     VulnScanner, SQLiScanner, XSSScanner, TechFingerprinter, CookieScanner,
@@ -213,6 +215,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             t = progress.add_task("[cyan]Enumerating subdomains...", total=100)
             sub_scanner = SubdomainScanner(validated_target, subdomains=conf.get("dns_wordlist"))
             sub_res = sub_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["subdomains"] = sub_res
             all_findings.extend(sub_res.get("findings", []))
 
@@ -243,19 +246,35 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             results["scans"]["vulns"] = vuln_res
             all_findings.extend(vuln_res.get("findings", []))
 
+        # Check if target has parameters
+        parsed_target = urllib.parse.urlparse(validated_target)
+        target_params = urllib.parse.parse_qs(parsed_target.query)
+        discovered_parameterized_urls = []
+        
+        # If no parameters, run crawler to find endpoints
+        if not target_params and (run_sqli or run_xss or kwargs.get("plugin_ssrf") or kwargs.get("run_all")):
+            t = progress.add_task("[cyan]Crawling to discover parameterized endpoints...", total=100)
+            crawler = Crawler(validated_target, max_depth=2, max_links=50, timeout=profile["timeout"])
+            discovered_parameterized_urls = crawler.crawl()
+            progress.update(t, completed=100)
+            if discovered_parameterized_urls:
+                results["scans"]["crawler"] = {"discovered_urls": discovered_parameterized_urls}
+
         # 10. Deep SQLi Scanner
         if run_sqli:
             t = progress.add_task("[cyan]Testing SQL Injection vectors...", total=100)
-            sqli_scanner = SQLiScanner(validated_target, timeout=profile["timeout"])
+            sqli_scanner = SQLiScanner(validated_target, discovered_urls=discovered_parameterized_urls, timeout=profile["timeout"])
             sqli_res = sqli_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["sqli"] = sqli_res
             all_findings.extend(sqli_res.get("findings", []))
 
         # 11. Deep XSS Scanner
         if run_xss:
             t = progress.add_task("[cyan]Testing XSS script vulnerabilities...", total=100)
-            xss_scanner = XSSScanner(validated_target, timeout=profile["timeout"])
+            xss_scanner = XSSScanner(validated_target, discovered_urls=discovered_parameterized_urls, timeout=profile["timeout"])
             xss_res = xss_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["xss"] = xss_res
             all_findings.extend(xss_res.get("findings", []))
 
@@ -264,6 +283,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             t = progress.add_task("[cyan]Mining info disclosure risks...", total=100)
             info_scanner = InfoDisclosureScanner(validated_target, timeout=profile["timeout"])
             info_res = info_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["info"] = info_res
             all_findings.extend(info_res.get("findings", []))
 
@@ -272,6 +292,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             t = progress.add_task("[cyan]Looking for admin/login interfaces...", total=100)
             auth_scanner = AuthScanner(validated_target, timeout=profile["timeout"])
             auth_res = auth_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["auth"] = auth_res
             all_findings.extend(auth_res.get("findings", []))
 
@@ -280,6 +301,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
             t = progress.add_task("[cyan]Discovering API routes...", total=100)
             api_scanner = APIScanner(validated_target, timeout=profile["timeout"])
             api_res = api_scanner.scan(progress_callback=make_progress_callback(progress, t))
+            progress.update(t, completed=100)
             results["scans"]["api"] = api_res
             all_findings.extend(api_res.get("findings", []))
 
@@ -321,6 +343,8 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
                 if plugin_id == "takeover":
                     # Pass subdomains finding references
                     extra_args["discovered_subdomains"] = results["scans"].get("subdomains", {}).get("findings", [])
+                elif plugin_id == "ssrf":
+                    extra_args["discovered_urls"] = discovered_parameterized_urls
                 
                 plugin_instance = get_plugin(plugin_id, validated_target, timeout=profile["timeout"], **extra_args)
                 plugin_res = plugin_instance.run()
@@ -348,7 +372,18 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
                 progress.update(t, completed=100)
                 console.print(f"[bold red]Plugin Error (compliance):[/bold red] {str(e)}")
 
-    results["findings"] = all_findings
+    # Deduplicate findings before writing
+    deduplicated_findings = []
+    seen_keys = set()
+    for f in all_findings:
+        # Generate a unique key based on target, title, and severity
+        key = (f.get("target"), f.get("title"), f.get("severity"))
+        if key not in seen_keys:
+            seen_keys.add(key)
+            deduplicated_findings.append(f)
+
+    results["findings"] = deduplicated_findings
+    all_findings = deduplicated_findings
 
     # Save scan data to output JSON
     ts = get_timestamp()

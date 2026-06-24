@@ -1,5 +1,6 @@
 # ScopeX Scanners package initialization
 from .port_scanner import PortScanner
+from .crawler import Crawler
 from .header_scanner import HeaderScanner
 from .ssl_scanner import SSLScanner
 from .dns_scanner import DNSScanner
@@ -17,6 +18,7 @@ from .whois_scanner import WhoisScanner
 
 __all__ = [
     'PortScanner',
+    'Crawler',
     'HeaderScanner',
     'SSLScanner',
     'DNSScanner',

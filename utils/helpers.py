@@ -2,6 +2,10 @@ import re
 from datetime import datetime
 import urllib.parse
 import requests
+import urllib3
+
+# Suppress certificate verification warnings for cleaner progress/CLI output
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def validate_target(target: str) -> str:
     """
@@ -99,7 +103,8 @@ def make_web_request(url: str, method: str = "GET", headers: dict = None,
             data=data if json_data is None else None,
             json=json_data,
             timeout=timeout,
-            allow_redirects=allow_redirects
+            allow_redirects=allow_redirects,
+            verify=False
         )
         return response
     except requests.exceptions.RequestException as e:

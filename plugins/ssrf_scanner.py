@@ -7,6 +7,10 @@ class SSRFPlugin(BasePlugin):
     PLUGIN_NAME = "SSRF & Path Traversal Scanner"
     PLUGIN_FAMILY = "Web Application"
     PLUGIN_VERSION = "1.0"
+    
+    def __init__(self, target, timeout=5.0, discovered_urls=None, **kwargs):
+        super().__init__(target, timeout=timeout, **kwargs)
+        self.discovered_urls = discovered_urls or []
 
     def run(self, progress_callback=None) -> dict:
         """Scan for SSRF, LFI, and Path Traversal vulnerabilities."""
@@ -15,20 +19,29 @@ class SSRFPlugin(BasePlugin):
 
     def scan_parameters(self):
         """Probes common URL parameters for SSRF and Path Traversal vulnerabilities."""
-        # Find parameters in URL
-        parsed = urllib.parse.urlparse(self.url)
-        params = urllib.parse.parse_qs(parsed.query)
+        urls_to_test = [self.url] + self.discovered_urls
+        
+        for url in urls_to_test:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
 
-        # If target has no query params, test typical endpoints/parameter names on target
-        if not params:
-            test_params = ["file", "path", "page", "url", "link", "dest", "redirect", "file_name"]
-            for param in test_params:
-                self.check_param_vulnerabilities(self.url, param)
-        else:
-            for param in params.keys():
-                self.check_param_vulnerabilities(self.url, param)
+            # Get baseline response
+            try:
+                baseline_res = make_web_request(url, timeout=self.timeout)
+                baseline_text = baseline_res.text if baseline_res else ""
+            except Exception:
+                continue
 
-    def check_param_vulnerabilities(self, base_url: str, param_name: str):
+            # If target has no query params, test typical endpoints/parameter names on target
+            if not params:
+                test_params = ["file", "path", "page", "url", "link", "dest", "redirect", "file_name"]
+                for param in test_params:
+                    self.check_param_vulnerabilities(url, param, baseline_text)
+            else:
+                for param in params.keys():
+                    self.check_param_vulnerabilities(url, param, baseline_text)
+
+    def check_param_vulnerabilities(self, base_url: str, param_name: str, baseline_text: str):
         """Tests individual query parameter with path traversal, LFI and SSRF payloads."""
         
         # 1. Path Traversal & LFI Payloads
@@ -44,7 +57,7 @@ class SSRFPlugin(BasePlugin):
             try:
                 res = make_web_request(test_url, timeout=self.timeout)
                 if res and res.status_code == 200:
-                    if any(sig in res.text for sig in signatures):
+                    if any(sig in res.text and sig not in baseline_text for sig in signatures):
                         self.add_finding(
                             title=f"Path Traversal / Local File Inclusion ({param_name})",
                             severity="HIGH",
@@ -67,7 +80,7 @@ class SSRFPlugin(BasePlugin):
             try:
                 res = make_web_request(test_url, timeout=self.timeout)
                 if res and res.status_code == 200:
-                    if any(sig in res.text for sig in signatures):
+                    if any(sig in res.text and sig not in baseline_text for sig in signatures):
                         self.add_finding(
                             title=f"Null Byte Injection / Path Bypass ({param_name})",
                             severity="MEDIUM",
@@ -93,7 +106,7 @@ class SSRFPlugin(BasePlugin):
             try:
                 res = make_web_request(test_url, timeout=self.timeout)
                 if res and res.status_code == 200:
-                    if any(sig in res.text for sig in signatures):
+                    if any(sig in res.text and sig not in baseline_text for sig in signatures):
                         self.add_finding(
                             title=f"Server-Side Request Forgery (SSRF) ({param_name})",
                             severity="CRITICAL",

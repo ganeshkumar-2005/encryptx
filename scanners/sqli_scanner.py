@@ -1,14 +1,16 @@
 import time
 import urllib.parse
 from utils.helpers import make_web_request
+from .crawler import Crawler
 
 class SQLiScanner:
-    def __init__(self, target: str, timeout: float = 5.0):
+    def __init__(self, target: str, discovered_urls: list = None, timeout: float = 5.0):
         self.target = target
         if not target.startswith(("http://", "https://")):
             self.url = f"https://{target}"
         else:
             self.url = target
+        self.discovered_urls = discovered_urls or []
         self.timeout = timeout
         
         # SQL error signatures for error-based SQLi
@@ -59,6 +61,105 @@ class SQLiScanner:
                     return db
         return ""
 
+    def _scan_url(self, url: str, baseline_time: float, findings: list):
+        """Scans a single URL with parameters for Error-Based and Time-Based SQLi."""
+        if not hasattr(self, 'confirmed_params'):
+            self.confirmed_params = set()
+        if not hasattr(self, 'current_step'):
+            self.current_step = 0
+        if not hasattr(self, 'total_steps'):
+            self.total_steps = 1
+        if not hasattr(self, 'progress_callback'):
+            self.progress_callback = None
+
+        parsed = urllib.parse.urlparse(url)
+        current_params = urllib.parse.parse_qs(parsed.query)
+
+        for param, values in current_params.items():
+            if param in self.confirmed_params:
+                # Skip testing parameter if we already proved it vulnerable
+                self.current_step += (len(self.error_payloads) + len(self.time_payloads))
+                if self.progress_callback:
+                    self.progress_callback(self.current_step, self.total_steps)
+                continue
+
+            # 1. Error-based testing
+            for payload in self.error_payloads:
+                self.current_step += 1
+                if self.progress_callback:
+                    self.progress_callback(self.current_step, self.total_steps)
+                    
+                # Craft modified query parameters
+                test_params = current_params.copy()
+                test_params[param] = [payload]
+                
+                # Reconstruct query URL
+                query = urllib.parse.urlencode(test_params, doseq=True)
+                test_url = parsed._replace(query=query).geturl()
+                
+                try:
+                    res = make_web_request(test_url, timeout=self.timeout)
+                    db_type = self._fingerprint_db_error(res.text)
+                    
+                    if db_type:
+                        self.confirmed_params.add(param)
+                        findings.append({
+                            "module": "SQL Injection Scanner",
+                            "target": test_url,
+                            "severity": "CRITICAL",
+                            "title": "Error-Based SQL Injection Vulnerability",
+                            "description": f"The parameter '{param}' is vulnerable to Error-Based SQL Injection. An database error signature representing {db_type} was observed in the response.",
+                            "evidence": f"Parameter: {param}\nPayload: {payload}\nDB Signature: {db_type}\nResponse contains database error string.",
+                            "remediation": "Use parameterized queries (prepared statements) for all database operations. Never concatenate untrusted user inputs directly into SQL statements."
+                        })
+                        break # Found SQLi on parameter, skip further error tests on it
+                except Exception:
+                    pass
+                    
+            # 2. Time-based blind testing
+            if param not in self.confirmed_params:
+                for payload, db in self.time_payloads:
+                    self.current_step += 1
+                    if self.progress_callback:
+                        self.progress_callback(self.current_step, self.total_steps)
+                        
+                    test_params = current_params.copy()
+                    test_params[param] = [payload]
+                    query = urllib.parse.urlencode(test_params, doseq=True)
+                    test_url = parsed._replace(query=query).geturl()
+                    
+                    try:
+                        start_time = time.time()
+                        res = make_web_request(test_url, timeout=self.timeout + 6.0)
+                        elapsed = time.time() - start_time
+                        
+                        # Check if request was delayed by approximately 5 seconds
+                        if elapsed >= 4.8 and elapsed > (baseline_time + 3.0):
+                            confirm_payload = self.time_confirm_payloads.get(db, payload)
+                            confirm_params = current_params.copy()
+                            confirm_params[param] = [confirm_payload]
+                            confirm_query = urllib.parse.urlencode(confirm_params, doseq=True)
+                            confirm_url = parsed._replace(query=confirm_query).geturl()
+
+                            confirm_start = time.time()
+                            make_web_request(confirm_url, timeout=self.timeout + 4.0)
+                            confirm_elapsed = time.time() - confirm_start
+
+                            if confirm_elapsed >= 1.8 and confirm_elapsed < 4.0:
+                                self.confirmed_params.add(param)
+                                findings.append({
+                                    "module": "SQL Injection Scanner",
+                                    "target": test_url,
+                                    "severity": "CRITICAL",
+                                    "title": "Time-Based Blind SQL Injection Vulnerability",
+                                    "description": f"The parameter '{param}' is vulnerable to Time-Based Blind SQL Injection. The server response is controllably delayed via SQL payload. Target DB: {db}",
+                                    "evidence": f"Parameter: {param}\nPayload: {payload}\nPayload 1 (5s): {elapsed:.2f}s delay\nPayload 2 (2s): {confirm_elapsed:.2f}s delay\nTarget DB: {db}",
+                                    "remediation": "Use parameterized queries (prepared statements) to prevent injection."
+                                })
+                                break # Found SQLi, skip further time tests on this param
+                    except Exception:
+                        pass
+
     def scan(self, progress_callback=None) -> dict:
         findings = []
         
@@ -67,19 +168,21 @@ class SQLiScanner:
             baseline_start = time.time()
             baseline_res = make_web_request(self.url, timeout=self.timeout)
             baseline_time = time.time() - baseline_start
-            baseline_len = len(baseline_res.text)
         except Exception as e:
             return {
                 "error": f"Failed to connect to target to scan SQLi: {str(e)}",
                 "findings": []
             }
 
-        # Scan URL parameters
-        parsed_url = urllib.parse.urlparse(self.url)
-        params = urllib.parse.parse_qs(parsed_url.query)
-        
-        total_steps = len(params) * (len(self.error_payloads) + len(self.time_payloads))
-        if total_steps == 0:
+        # Run Crawler (pass make_web_request to enable mocking in tests)
+        crawler = Crawler(self.url, timeout=self.timeout, make_request_fn=make_web_request)
+        try:
+            crawl_results = crawler.crawl()
+            urls_to_test = crawl_results["urls_with_params"]
+        except Exception:
+            urls_to_test = []
+
+        if not urls_to_test:
             # No URL parameters to test — log INFO and skip gracefully
             findings.append({
                 "module": "SQL Injection Scanner",
@@ -90,115 +193,39 @@ class SQLiScanner:
                 "evidence": f"URL: {self.url}\nQuery string: (empty)",
                 "remediation": "Provide a URL with query parameters (e.g., ?id=1) for SQL injection testing."
             })
+            if progress_callback:
+                progress_callback(1, 1)
             return {
                 "target": self.url,
                 "findings": findings
             }
             
-        # Track which parameters already have confirmed findings to avoid duplicates
-        confirmed_params = set()
+        # Calculate total steps across all URLs to test
+        total_steps = 0
+        for u in urls_to_test:
+             try:
+                 p_url = urllib.parse.urlparse(u)
+                 p = urllib.parse.parse_qs(p_url.query)
+                 total_steps += len(p) * (len(self.error_payloads) + len(self.time_payloads))
+             except Exception:
+                 pass
+        
+        # Setup class attributes for progress and confirmed params tracking
+        self.progress_callback = progress_callback
+        self.current_step = 0
+        self.total_steps = total_steps
+        self.confirmed_params = set()
 
-        step = 0
-        for param, values in params.items():
-            # 1. Error-based testing
-            for payload in self.error_payloads:
-                step += 1
-                if progress_callback:
-                    progress_callback(step, total_steps)
-                    
-                # Skip if this parameter already has a confirmed finding
-                if param in confirmed_params:
-                    continue
+        for current_url in urls_to_test:
+            self._scan_url(current_url, baseline_time, findings)
 
-                # Craft modified query parameters
-                test_params = params.copy()
-                test_params[param] = [payload]
-                
-                # Reconstruct query URL
-                query = urllib.parse.urlencode(test_params, doseq=True)
-                test_url = urllib.parse.urlunparse((
-                    parsed_url.scheme, parsed_url.netloc, parsed_url.path, 
-                    parsed_url.params, query, parsed_url.fragment
-                ))
-                
-                try:
-                    res = make_web_request(test_url, timeout=self.timeout)
-                    db_type = self._fingerprint_db_error(res.text)
-                    
-                    if db_type:
-                        confirmed_params.add(param)
-                        findings.append({
-                            "module": "SQL Injection Scanner",
-                            "target": test_url,
-                            "severity": "CRITICAL",
-                            "title": "Error-Based SQL Injection Vulnerability",
-                            "description": f"The parameter '{param}' is vulnerable to Error-Based SQL Injection. An database error signature representing {db_type} was observed in the response.",
-                            "evidence": f"Parameter: {param}\nPayload: {payload}\nDB Signature: {db_type}\nResponse contains database error string.",
-                            "remediation": "Use parameterized queries (prepared statements) for all database operations. Never concatenate untrusted user inputs directly into SQL statements."
-                        })
-                        break # Found SQLi on parameter, skip further tests on it
-                except Exception:
-                    pass
-            
-            # 2. Time-based blind testing (only if no error-based SQLi found for THIS parameter)
-            if param not in confirmed_params:
-                for payload, db in self.time_payloads:
-                    step += 1
-                    if progress_callback:
-                        progress_callback(step, total_steps)
-                        
-                    test_params = params.copy()
-                    test_params[param] = [payload]
-                    query = urllib.parse.urlencode(test_params, doseq=True)
-                    test_url = urllib.parse.urlunparse((
-                        parsed_url.scheme, parsed_url.netloc, parsed_url.path, 
-                        parsed_url.params, query, parsed_url.fragment
-                    ))
-                    
-                    try:
-                        start_time = time.time()
-                        res = make_web_request(test_url, timeout=self.timeout + 6.0)
-                        elapsed = time.time() - start_time
-                        
-                        # Check if request was delayed by approximately 5 seconds
-                        # Add buffer for network jitter
-                        if elapsed >= 4.8 and elapsed > (baseline_time + 3.0):
-                            # --- Double confirmation ---
-                            # Send a second payload with a 2-second delay to rule out
-                            # network jitter or slow server responses. If the second
-                            # request takes ~2s (not ~5s), the delay is controllable.
-                            confirm_payload = self.time_confirm_payloads.get(db, payload)
-                            confirm_params = params.copy()
-                            confirm_params[param] = [confirm_payload]
-                            confirm_query = urllib.parse.urlencode(confirm_params, doseq=True)
-                            confirm_url = urllib.parse.urlunparse((
-                                parsed_url.scheme, parsed_url.netloc, parsed_url.path,
-                                parsed_url.params, confirm_query, parsed_url.fragment
-                            ))
+        # Progress callback cleanup
+        if progress_callback:
+            progress_callback(total_steps, total_steps)
 
-                            confirm_start = time.time()
-                            make_web_request(confirm_url, timeout=self.timeout + 4.0)
-                            confirm_elapsed = time.time() - confirm_start
-
-                            # Confirmation: 2s delay should produce ~1.8-3.5s response,
-                            # distinctly shorter than the initial 5s delay
-                            if confirm_elapsed >= 1.8 and confirm_elapsed < (elapsed - 1.0):
-                                confirmed_params.add(param)
-                                findings.append({
-                                    "module": "SQL Injection Scanner",
-                                    "target": test_url,
-                                    "severity": "CRITICAL",
-                                    "title": "Time-Based Blind SQL Injection Vulnerability",
-                                    "description": f"The parameter '{param}' is vulnerable to Time-Based Blind SQL Injection. The server response was delayed significantly ({elapsed:.2f}s) when injecting sleep payloads. Confirmed with a second {db} delay of {confirm_elapsed:.2f}s.",
-                                    "evidence": f"Parameter: {param}\nPayload: {payload}\nBaseline Time: {baseline_time:.2f}s\nPayload response time: {elapsed:.2f}s\nConfirmation (2s delay): {confirm_elapsed:.2f}s",
-                                    "remediation": "Implement robust parameterized queries. Use ORMs or predefined stored procedures to strictly enforce separation of data and code."
-                                })
-                                break
-                    except Exception:
-                        pass
-                        
         return {
             "target": self.url,
             "findings": findings
         }
+
 Class = SQLiScanner

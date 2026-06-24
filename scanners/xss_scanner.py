@@ -2,14 +2,16 @@ import html
 import urllib.parse
 from bs4 import BeautifulSoup
 from utils.helpers import make_web_request
+from .crawler import Crawler
 
 class XSSScanner:
-    def __init__(self, target: str, timeout: float = 5.0):
+    def __init__(self, target: str, discovered_urls: list = None, timeout: float = 5.0):
         self.target = target
         if not target.startswith(("http://", "https://")):
             self.url = f"https://{target}"
         else:
             self.url = target
+        self.discovered_urls = discovered_urls or []
         self.timeout = timeout
         
         # Test payloads representing different injection contexts
@@ -78,7 +80,7 @@ class XSSScanner:
                 "findings": []
             }
             
-        # Parse DOM XSS threats first
+        # Parse DOM XSS threats first (on the root page)
         dom_threats = self._check_dom_xss(baseline_html)
         for dt in dom_threats:
             findings.append({
@@ -91,13 +93,30 @@ class XSSScanner:
                 "remediation": "Avoid using dangerous sinks like innerHTML or eval. Use safe alternatives such as textContent or innerText, and implement robust sanitization using libraries like DOMPurify."
             })
 
-        # Scan parameters for Reflected XSS
-        parsed_url = urllib.parse.urlparse(self.url)
-        params = urllib.parse.parse_qs(parsed_url.query)
-        
-        total_steps = len(params) * len(self.payloads)
+        # Run Crawler (pass make_web_request to enable mocking in tests)
+        crawler = Crawler(self.url, timeout=self.timeout, make_request_fn=make_web_request)
+        try:
+            crawl_results = crawler.crawl()
+            urls_with_params = crawl_results["urls_with_params"]
+            form_targets = crawl_results["form_targets"]
+        except Exception:
+            urls_with_params = []
+            form_targets = []
+
+        # Calculate total steps across all targets
+        total_steps = 0
+        for u in urls_with_params:
+            try:
+                p_url = urllib.parse.urlparse(u)
+                p = urllib.parse.parse_qs(p_url.query)
+                total_steps += len(p) * len(self.payloads)
+            except Exception:
+                pass
+        for form in form_targets:
+            total_steps += len(form["fields"]) * len(self.payloads)
+
         if total_steps == 0:
-            # No URL parameters to test — log INFO and skip gracefully
+            # No parameters or forms to test — log INFO and skip gracefully
             findings.append({
                 "module": "XSS Scanner",
                 "target": self.url,
@@ -105,64 +124,154 @@ class XSSScanner:
                 "title": "No URL Parameters Found to Test",
                 "description": "The target URL does not contain any query string parameters. Reflected XSS testing requires injectable parameters.",
                 "evidence": f"URL: {self.url}\nQuery string: (empty)",
-                "remediation": "Provide a URL with query parameters (e.g., ?q=test) for reflected XSS testing."
+                "remediation": "Provide a URL with query parameters (e.g., ?search=term) for reflected XSS testing."
             })
+            if progress_callback:
+                progress_callback(1, 1)
             return {
                 "target": self.url,
                 "findings": findings
             }
-            
-        step = 0
-        for param, values in params.items():
-            for payload in self.payloads:
-                step += 1
-                if progress_callback:
-                    progress_callback(step, total_steps)
-                    
-                test_params = params.copy()
-                test_params[param] = [payload]
-                
-                query = urllib.parse.urlencode(test_params, doseq=True)
-                test_url = urllib.parse.urlunparse((
-                    parsed_url.scheme, parsed_url.netloc, parsed_url.path, 
-                    parsed_url.params, query, parsed_url.fragment
-                ))
-                
-                try:
-                    res = make_web_request(test_url, timeout=self.timeout)
 
-                    if payload in res.text:
-                        # Payload reflected literally without encoding — VULNERABLE
-                        findings.append({
-                            "module": "XSS Scanner",
-                            "target": test_url,
-                            "severity": "HIGH",
-                            "title": "Reflected Cross-Site Scripting (XSS) Vulnerability",
-                            "description": f"The application reflects untrusted input parameter '{param}' directly back into the response without sanitization or HTML encoding.",
-                            "evidence": f"Parameter: {param}\nPayload: {payload}\nReflected in response body: True",
-                            "remediation": "Apply context-aware output encoding to all dynamic values printed in HTML body, attributes, and scripts. Utilize Content-Security-Policy headers."
-                        })
-                        break # Skip remaining payloads for this parameter
+        current_step = 0
+        confirmed_findings = set()  # Keyed by (endpoint, param)
 
-                    elif self._is_html_encoded(payload, res.text):
-                        # Payload was reflected but HTML-encoded — NOT vulnerable
-                        # Report as INFO so the tester knows the input IS reflected
-                        findings.append({
-                            "module": "XSS Scanner",
-                            "target": test_url,
-                            "severity": "INFO",
-                            "title": "Payload Reflected but Safely Encoded",
-                            "description": f"The parameter '{param}' value is reflected in the response, but the server applies HTML encoding (e.g., &lt;script&gt; instead of <script>), neutralizing the XSS vector.",
-                            "evidence": f"Parameter: {param}\nPayload: {payload}\nReflected as HTML-encoded: True",
-                            "remediation": "No immediate action required. The server correctly encodes reflected input. Continue to verify encoding is applied consistently across all contexts."
-                        })
-                        break # No need to test more payloads — encoding is applied
+        # 1. Test Reflected XSS on GET parameters of URLs
+        for current_url in urls_with_params:
+            try:
+                parsed = urllib.parse.urlparse(current_url)
+                current_params = urllib.parse.parse_qs(parsed.query)
+                endpoint = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+            except Exception:
+                continue
 
-                except Exception:
-                    pass
-                    
+            for param, values in current_params.items():
+                if (endpoint, param) in confirmed_findings:
+                    current_step += len(self.payloads)
+                    if progress_callback:
+                        progress_callback(current_step, total_steps)
+                    continue
+
+                for payload in self.payloads:
+                    current_step += 1
+                    if progress_callback:
+                        progress_callback(current_step, total_steps)
+
+                    test_params = current_params.copy()
+                    test_params[param] = [payload]
+
+                    query = urllib.parse.urlencode(test_params, doseq=True)
+                    test_url = parsed._replace(query=query).geturl()
+
+                    try:
+                        res = make_web_request(test_url, timeout=self.timeout)
+                        if not res:
+                            continue
+
+                        if payload in res.text:
+                            confirmed_findings.add((endpoint, param))
+                            findings.append({
+                                "module": "XSS Scanner",
+                                "target": test_url,
+                                "severity": "HIGH",
+                                "title": "Reflected Cross-Site Scripting (XSS) Vulnerability",
+                                "description": f"The application reflects untrusted input parameter '{param}' directly back into the response without sanitization or HTML encoding.",
+                                "evidence": f"Endpoint: {endpoint}\nMethod: GET\nParameter: {param}\nPayload: {payload}\nReflected in response body: True",
+                                "remediation": "Apply context-aware output encoding to all dynamic values printed in HTML body, attributes, and scripts. Utilize Content-Security-Policy headers."
+                            })
+                            break
+
+                        elif self._is_html_encoded(payload, res.text):
+                            confirmed_findings.add((endpoint, param))
+                            findings.append({
+                                "module": "XSS Scanner",
+                                "target": test_url,
+                                "severity": "INFO",
+                                "title": "Payload Reflected but Safely Encoded",
+                                "description": f"The parameter '{param}' value is reflected in the response, but the server applies HTML encoding (e.g., &lt;script&gt; instead of <script>), neutralizing the XSS vector.",
+                                "evidence": f"Endpoint: {endpoint}\nMethod: GET\nParameter: {param}\nPayload: {payload}\nReflected as HTML-encoded: True",
+                                "remediation": "No immediate action required. The server correctly encodes reflected input. Continue to verify encoding is applied consistently across all contexts."
+                            })
+                            break
+
+                    except Exception:
+                        pass
+
+        # 2. Test Reflected XSS on HTML form fields (GET and POST)
+        for form in form_targets:
+            action = form["action"]
+            method = form["method"]
+            fields = form["fields"]
+
+            try:
+                parsed_action = urllib.parse.urlparse(action)
+                endpoint = urllib.parse.urlunparse((parsed_action.scheme, parsed_action.netloc, parsed_action.path, '', '', ''))
+            except Exception:
+                endpoint = action
+
+            for param in fields:
+                if (endpoint, param) in confirmed_findings:
+                    current_step += len(self.payloads)
+                    if progress_callback:
+                        progress_callback(current_step, total_steps)
+                    continue
+
+                for payload in self.payloads:
+                    current_step += 1
+                    if progress_callback:
+                        progress_callback(current_step, total_steps)
+
+                    # Build form data: set target parameter to payload, others to "test"
+                    form_data = {f: "test" for f in fields}
+                    form_data[param] = payload
+
+                    try:
+                        if method == "POST":
+                            target_url = action
+                            res = make_web_request(action, method="POST", data=form_data, timeout=self.timeout)
+                        else:  # GET
+                            query = urllib.parse.urlencode(form_data, doseq=True)
+                            target_url = parsed_action._replace(query=query).geturl()
+                            res = make_web_request(target_url, method="GET", timeout=self.timeout)
+
+                        if not res:
+                            continue
+
+                        if payload in res.text:
+                            confirmed_findings.add((endpoint, param))
+                            findings.append({
+                                "module": "XSS Scanner",
+                                "target": target_url,
+                                "severity": "HIGH",
+                                "title": "Reflected Cross-Site Scripting (XSS) Vulnerability",
+                                "description": f"The application reflects untrusted input parameter '{param}' directly back into the response without sanitization or HTML encoding.",
+                                "evidence": f"Endpoint: {endpoint}\nMethod: {method}\nParameter: {param}\nPayload: {payload}\nReflected in response body: True",
+                                "remediation": "Apply context-aware output encoding to all dynamic values printed in HTML body, attributes, and scripts. Utilize Content-Security-Policy headers."
+                            })
+                            break
+
+                        elif self._is_html_encoded(payload, res.text):
+                            confirmed_findings.add((endpoint, param))
+                            findings.append({
+                                "module": "XSS Scanner",
+                                "target": target_url,
+                                "severity": "INFO",
+                                "title": "Payload Reflected but Safely Encoded",
+                                "description": f"The parameter '{param}' value is reflected in the response, but the server applies HTML encoding (e.g., &lt;script&gt; instead of <script>), neutralizing the XSS vector.",
+                                "evidence": f"Endpoint: {endpoint}\nMethod: {method}\nParameter: {param}\nPayload: {payload}\nReflected as HTML-encoded: True",
+                                "remediation": "No immediate action required. The server correctly encodes reflected input. Continue to verify encoding is applied consistently across all contexts."
+                            })
+                            break
+
+                    except Exception:
+                        pass
+
+        if progress_callback:
+            progress_callback(total_steps, total_steps)
+
         return {
             "target": self.url,
             "findings": findings
         }
+
 Class = XSSScanner

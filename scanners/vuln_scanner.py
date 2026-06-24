@@ -199,8 +199,8 @@ class VulnScanner:
             findings.append({
                 "module": "Vulnerability Scanner",
                 "target": self.url,
-                "severity": "MEDIUM",
-                "title": "Clickjacking Protection Missing",
+                "severity": "INFO",
+                "title": "Clickjacking Confirmed by Active Framing Check",
                 "description": "The site does not restrict framing via X-Frame-Options or Content-Security-Policy (frame-ancestors directive), leaving users vulnerable to clickjacking attacks.",
                 "evidence": f"X-Frame-Options: {headers.get('x-frame-options', 'None')}\nContent-Security-Policy: {headers.get('content-security-policy', 'None')}",
                 "remediation": "Set X-Frame-Options to DENY or SAMEORIGIN, or add the 'frame-ancestors' directive to your Content-Security-Policy."

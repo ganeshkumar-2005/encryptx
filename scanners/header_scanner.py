@@ -274,7 +274,7 @@ class HeaderScanner:
             },
             "x-content-type-options": {
                 "title": "Missing X-Content-Type-Options Header",
-                "severity": "LOW",
+                "severity": "MEDIUM",
                 "desc": "The X-Content-Type-Options response HTTP header is a marker used by the server to indicate that the MIME types advertised in the Content-Type headers should not be changed and be followed.",
                 "remedy": "Configure the web server to send the X-Content-Type-Options: nosniff header."
             },
