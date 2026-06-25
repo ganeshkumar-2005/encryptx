@@ -117,8 +117,10 @@ def config():
 @click.option("--plugin-compliance", is_flag=True, help="Run Compliance & Scoring plugin.")
 @click.option("--all", "run_all", is_flag=True, help="Run all available basic, deep, and plugin scans.")
 @click.option("--nuclei", is_flag=True, help="Run Nuclei integration scanner.")
+@click.option("--nuclei-tags", help="Comma-separated list of tags to run with Nuclei.")
+@click.option("--nuclei-templates", help="Path to a specific Nuclei template file or directory.")
 @click.option("--force", "-f", is_flag=True, help="Bypass interactive scan permission confirmation.")
-def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, cookies, waf, info, auth, api, whois, deep, plugins, plugin_ssl, plugin_services, plugin_cms, plugin_network, plugin_takeover, plugin_ssrf, plugin_compliance, run_all, nuclei, force):
+def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, cookies, waf, info, auth, api, whois, deep, plugins, plugin_ssl, plugin_services, plugin_cms, plugin_network, plugin_takeover, plugin_ssrf, plugin_compliance, run_all, nuclei, nuclei_tags, nuclei_templates, force):
     """Audits targets for configuration flaws and security vulnerabilities."""
     display_banner(console)
     
@@ -130,7 +132,7 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
         "plugins": plugins, "plugin_ssl": plugin_ssl, "plugin_services": plugin_services,
         "plugin_cms": plugin_cms, "plugin_network": plugin_network, "plugin_takeover": plugin_takeover,
         "plugin_ssrf": plugin_ssrf, "plugin_compliance": plugin_compliance, "run_all": run_all,
-        "nuclei": nuclei
+        "nuclei": nuclei, "nuclei_tags": nuclei_tags, "nuclei_templates": nuclei_templates
     }
 
     try:
@@ -191,13 +193,18 @@ def scan(target, ports, headers, ssl, dns, subdomains, vulns, sqli, xss, tech, c
     nuclei_findings = []
     if run_nuclei:
         from utils.nuclei_integration import check_nuclei_installed, run_nuclei_integration
-        check_nuclei_installed()
+        version_warning = check_nuclei_installed()
         
         import threading
         def worker():
             nonlocal nuclei_findings
             try:
-                nuclei_findings = run_nuclei_integration(validated_target)
+                nuclei_findings = run_nuclei_integration(
+                    validated_target,
+                    nuclei_tags=nuclei_tags,
+                    nuclei_templates=nuclei_templates,
+                    version_warning=version_warning
+                )
             except Exception as e:
                 console.print(f"[bold red]Nuclei Scan Error:[/bold red] {str(e)}")
                 
